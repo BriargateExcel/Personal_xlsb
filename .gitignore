@@ -3,10 +3,6 @@ UserForm*.frm
 UserForm*.frx
 
 #####################
-# Don't need to retain Personal.xlsb in git
-Personal.xlsb
-
-#####################
 # Ignore MS Office temporary files
 ~*
 #####################
