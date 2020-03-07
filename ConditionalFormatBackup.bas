@@ -91,10 +91,10 @@ Public Sub CFBackup()
         Dim vInfo As Variant
         vInfo = Split(oName.RefersTo)
 
-        vInfo(0) = Mid$(vInfo(0), 3)
+        vInfo(0) = Strings.Mid$(vInfo(0), 3)
 
         Dim n As Long
-        n = CInt(Mid$(vInfo(3), Len("Count=X"), Len(sFormat))) ' literal "Count=" must match the restore macro
+        n = CInt(Strings.Mid$(vInfo(3), Len("Count=X"), Len(sFormat))) ' literal "Count=" must match the restore macro
 
         Msg = _
             Msg + " If so, the previous backup of " + CStr(n) + _
@@ -102,7 +102,7 @@ Public Sub CFBackup()
             " on " + vInfo(0) + " at " + vInfo(1) + " " + vInfo(2) + " will be replaced."
 
         Dim sSelec As String
-        sSelec = Mid$(vInfo(4), Len("Sheet=X"), Len(sFormat)) ' literal "Sheet=" must match the restore macro
+        sSelec = Strings.Mid$(vInfo(4), Len("Sheet=X"), Len(sFormat)) ' literal "Sheet=" must match the restore macro
 
         Dim sNamSheet As String
         sNamSheet = sPreSheet + sSelec
@@ -121,10 +121,10 @@ Public Sub CFBackup()
 
         Do While True
             n = n + 1
-            sNamSheet = sPreSheet + Format$(n, sFormat)
+            sNamSheet = sPreSheet + Strings.Format$(n, sFormat)
 
             If IsError(NameRefersTo(sNamSheet, -1)) Then ' available
-                sBackup = myName + Format$(n, sFormat)
+                sBackup = myName + Strings.Format$(n, sFormat)
                 Exit Do
             End If
 
@@ -191,15 +191,15 @@ Public Sub CFBackup()
 
     ' literals "Count=" and "Sheet=" must match the restore macro
     Set oName = _
-              oSheet.Names.Add(sName, (sNow + " Count=" + Format$(nItems, sFormat) + _
-                                       " Sheet=" + Right$(sBackup, Len(sFormat))), bVisible)
+              oSheet.Names.Add(sName, (sNow + " Count=" + Strings.Format$(nItems, sFormat) + _
+                                       " Sheet=" + Strings.Right$(sBackup, Len(sFormat))), bVisible)
 
     oName.Comment = sDND + sPreItem + "... names; see macro " + myName
 
     For n = 1 To nItems
         nStep = nStep + 1
         Application.StatusBar = ProgressBar_Text(sLabel, nStep, nSteps)
-        sName = sScope + sPreItem + Format$(n, sFormat)
+        sName = sScope + sPreItem + Strings.Format$(n, sFormat)
 
         Dim oFC As Object
         Set oFC = oSheet.Cells.FormatConditions(n)
@@ -316,14 +316,14 @@ Public Sub CFBackup()
             nRow = nRow + 1
             sName = sCell2 + "&" + .Cells(nRow, 1).Address
             Set oFC = oSheet.Cells.FormatConditions(n)
-            .Cells(nRow, 1).Value = sPreItem + Format$(n, sFormat)
+            .Cells(nRow, 1).Value = sPreItem + Strings.Format$(n, sFormat)
             .Cells(nRow, 2).Formula = "=PERSONAL.xlsb!NameRefersTo(" + sName + ",0)"
             .Cells(nRow, 3).Formula = "=HYPERLINK(""#""&Personal.xlsb!NameRefersTo(" + sName + ",2),Personal.xlsb!NameRefersTo(" + sName + ",1))"
             .Cells(nRow, 4).Value = vbNullString
             .Cells(nRow, 5).Value = oFC.Type
             .Cells(nRow, 6).Value = vType(oFC.Type)
             .Cells(nRow, 7).Value = IIf(oFC.StopIfTrue, "X", vbNullString)
-            sName = sScope + sPreItem + Format$(n, sFormat)
+            sName = sScope + sPreItem + Strings.Format$(n, sFormat)
 
             Dim rFirst As Range
             Set rFirst = ActiveSheet.Range(sName).Areas(1).Item(1)
@@ -493,13 +493,13 @@ Public Sub CFRestore()
     Dim vInfo As Variant
     vInfo = Split(oName.RefersTo)
 
-    vInfo(0) = Mid$(vInfo(0), 3)
+    vInfo(0) = Strings.Mid$(vInfo(0), 3)
 
     Dim nItems As Long
-    nItems = CInt(Mid$(vInfo(3), Len("Count=X"), Len(sFormat))) ' literal "Count=" must match the backup macro
+    nItems = CInt(Strings.Mid$(vInfo(3), Len("Count=X"), Len(sFormat))) ' literal "Count=" must match the backup macro
 
     Dim sSelec As String
-    sSelec = Mid$(vInfo(4), Len("Sheet=X"), Len(sFormat)) ' literal "Sheet=" must match the backup macro
+    sSelec = Strings.Mid$(vInfo(4), Len("Sheet=X"), Len(sFormat)) ' literal "Sheet=" must match the backup macro
 
     Dim sBackup As String
     sBackup = sBacMac + sSelec
@@ -780,24 +780,24 @@ Public Function NameRefersTo( _
     On Error GoTo Return_Error                   ' in case Name is not valid or RefersTo does not represent a Range
 
     Dim sBook As String
-    sBook = Mid$(Name, (InStr(1, Name, "[") + 1)) ' extract yyy]zzz from x[yyy]zzz (if present)
+    sBook = Strings.Mid$(Name, (InStr(1, Name, "[") + 1)) ' extract yyy]zzz from x[yyy]zzz (if present)
 
     Dim TempName As String
     TempName = Name
 
     If sBook <> Name Then
-        sBook = Left$(sBook, InStr(1, sBook, "]")) ' extract yyy] from yyy]zzz
+        sBook = Strings.Left$(sBook, InStr(1, sBook, "]")) ' extract yyy] from yyy]zzz
 
         If sBook <> vbNullString Then
-            sBook = Left$(sBook, (Len(sBook) - 1)) ' extract yyy from yyy]
+            sBook = Strings.Left$(sBook, (Len(sBook) - 1)) ' extract yyy from yyy]
             Set oWB = Workbooks(sBook)           ' Workbook related to Name (error if not open)
 
             Dim sResult As String
-            sResult = Mid$(Name, (InStr(1, Name, "]") + 1)) ' extract zzz from x[yyy]zzz
+            sResult = Strings.Mid$(Name, (InStr(1, Name, "]") + 1)) ' extract zzz from x[yyy]zzz
 
-            If Left$(sResult, 1) = "!" Or Left$(sResult, 2) = "'!" Then
-                sResult = Mid$(sResult, (InStr(1, sResult, "!") + 1))
-            ElseIf Left$(Name, 1) = "'" Then
+            If Strings.Left$(sResult, 1) = "!" Or Strings.Left$(sResult, 2) = "'!" Then
+                sResult = Strings.Mid$(sResult, (InStr(1, sResult, "!") + 1))
+            ElseIf Strings.Left$(Name, 1) = "'" Then
                 sResult = "'" + sResult
             End If
 
@@ -810,47 +810,47 @@ Public Function NameRefersTo( _
     Dim oName As Name
     Set oName = oWB.Names(TempName)              ' Names is a property of Workbook
 
-    sResult = Mid$(oName.RefersTo, 2)            ' remove initial equals-sign (=)
+    sResult = Strings.Mid$(oName.RefersTo, 2)            ' remove initial equals-sign (=)
     If Choice = 0 Then
         NameRefersTo = sResult
     Else
-        If Left$(sResult, 1) = "'" Then          ' there might be escaped single-quotes ('')
+        If Strings.Left$(sResult, 1) = "'" Then          ' there might be escaped single-quotes ('')
 
             Dim sSheet As String
-            sSheet = Left$(sResult, (InStr(1, Replace(sResult, "''", "xx"), "'!") + 1))
+            sSheet = Strings.Left$(sResult, (InStr(1, Replace(sResult, "''", "xx"), "'!") + 1))
         Else                                     ' no single-quotes; therefore,
-            sSheet = Left$(sResult, InStr(1, sResult, "!")) ' no exclamation-point (!) in Worksheet reference
+            sSheet = Strings.Left$(sResult, InStr(1, sResult, "!")) ' no exclamation-point (!) in Worksheet reference
         End If
 
         If sSheet = vbNullString Then            ' unexpected for a named range
             Dim oWS As Worksheet
             Set oWS = ActiveSheet                ' default Worksheet
         Else
-            sSheet = Left$(sSheet, (Len(sSheet) - 1)) ' extract 'xxx[yyy]zzz' from 'xxx[yyy]zzz'!
-            sBook = Mid$(sSheet, (InStr(1, sSheet, "[") + 1)) ' extract yyy]zzz' from 'xxx[yyy]zzz'
+            sSheet = Strings.Left$(sSheet, (Len(sSheet) - 1)) ' extract 'xxx[yyy]zzz' from 'xxx[yyy]zzz'!
+            sBook = Strings.Mid$(sSheet, (InStr(1, sSheet, "[") + 1)) ' extract yyy]zzz' from 'xxx[yyy]zzz'
 
             If sBook = sSheet Then
                 sBook = vbNullString             ' [yyy] was not present
             Else
-                sBook = Left$(sBook, InStr(1, sBook, "]")) ' extract yyy] from yyy]zzz'
+                sBook = Strings.Left$(sBook, InStr(1, sBook, "]")) ' extract yyy] from yyy]zzz'
 
                 If sBook <> vbNullString Then
-                    sBook = Left$(sBook, (Len(sBook) - 1)) ' extract yyy from yyy]
+                    sBook = Strings.Left$(sBook, (Len(sBook) - 1)) ' extract yyy from yyy]
                     Set oWB = Workbooks(sBook)   ' referenced Workbook (error if not open)
-                    sSheet = Mid$(sSheet, (InStr(1, sSheet, "]") + 1)) ' extract zzz' from xxx[yyy]zzz'
+                    sSheet = Strings.Mid$(sSheet, (InStr(1, sSheet, "]") + 1)) ' extract zzz' from xxx[yyy]zzz'
                 End If
 
             End If
 
             sResult = sSheet
-            If Left$(sResult, 1) = "'" Then sResult = Mid$(sResult, 2) ' remove any leading/trailing single-quotes (')
-            If Right$(sResult, 1) = "'" Then sResult = Left$(sResult, (Len(sResult) - 1))
+            If Strings.Left$(sResult, 1) = "'" Then sResult = Strings.Mid$(sResult, 2) ' remove any leading/trailing single-quotes (')
+            If Strings.Right$(sResult, 1) = "'" Then sResult = Strings.Left$(sResult, (Len(sResult) - 1))
             sResult = Replace(sResult, "''", "'") ' replace escaped single-quotes ('')
             Set oWS = oWB.Worksheets(sResult)    ' referenced Worksheet (error if not in oWB)
 
             If sBook <> vbNullString Then
                 sSheet = "[" + sBook + "]" + sSheet ' add any Workbook in brackets
-                If Right$(sSheet, 1) = "'" Then sSheet = "'" + sSheet ' fix single-quotes
+                If Strings.Right$(sSheet, 1) = "'" Then sSheet = "'" + sSheet ' fix single-quotes
             End If
 
         End If
@@ -860,7 +860,7 @@ Public Function NameRefersTo( _
         ElseIf Choice < 0 Then
             NameRefersTo = sSheet                ' qualified Worksheet reference (including Workbook name)
         Else
-            sResult = Mid$(oName.RefersTo, 2)    ' remove initial equals-sign (=)
+            sResult = Strings.Mid$(oName.RefersTo, 2)    ' remove initial equals-sign (=)
             sResult = Replace(sResult, (sSheet + "!#REF!,"), vbNullString) ' remove Sheet!#REF!,
             sResult = Replace(sResult, ("," + sSheet + "!#REF!"), vbNullString) ' remove ,Sheet!#REF!
 
@@ -908,7 +908,7 @@ Private Function IsProtected( _
     If Target Is Nothing Then Set TempTarget = Application.ThisCell
 
     Dim TempChoice As Variant
-    If Not IsNumeric(Choice) Then TempChoice = LCase$(Choice)
+    If Not IsNumeric(Choice) Then TempChoice = Strings.LCase$(Choice)
 
     Select Case TempChoice
     Case 3, "scenarios": IsProtected = TempTarget.Parent.ProtectScenarios
@@ -943,7 +943,7 @@ Private Function ProgressBar_Text( _
     Dim n As Long
     n = Round(k * (nCurrent - 1) / nTotal, 0)
 
-    ProgressBar_Text = "|" + String(n, "|") + String((k - n), ".") + "|"
+    ProgressBar_Text = "|" + Strings.String(n, "|") + Strings.String((k - n), ".") + "|"
 
     If sLabel <> vbNullString Then ProgressBar_Text = ProgressBar_Text + "  " + sLabel + CStr(nCurrent) + " of " + CStr(nTotal)
 

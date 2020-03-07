@@ -11,70 +11,44 @@ Option Explicit
 Private MnuEvt      As clsVBECmdHandler
 Private EvtHandlers As New Collection
 
-Public Sub auto_open()
-    '    CreateVBEMenu
-    CreateXLMenu
-End Sub                                          ' auto_open
-
-Public Sub auto_close()
-    RemoveVBEAndXLMenus
-End Sub                                          ' auto_close
-
-Private Sub CreateVBEMenu()
-    
-    Dim objMenu As CommandBarPopup
-    Set objMenu = Application.VBE.CommandBars(1).controls.Add(Type:=msoControlPopup)
-    
-    With objMenu
-        .Caption = "E&xport for VCS"
-
-        Dim objMenuItem As Object
-        Set objMenuItem = .controls.Add(Type:=msoControlButton)
-        
-        objMenuItem.OnAction = "MakeConfigFile"
-        MenuEvents objMenuItem
-        objMenuItem.Caption = "&Make Config File"
-
-        Set objMenuItem = .controls.Add(Type:=msoControlButton)
-        objMenuItem.OnAction = "Export"
-        MenuEvents objMenuItem
-        objMenuItem.Caption = "&Export"
-
-        Set objMenuItem = .controls.Add(Type:=msoControlButton)
-        objMenuItem.OnAction = "Import"
-        MenuEvents objMenuItem
-        objMenuItem.Caption = "&Import"
-
-    End With
-
-    Set objMenuItem = Nothing
-    Set objMenu = Nothing
-
-End Sub                                          ' CreateVBEMenu
-
-Private Sub MenuEvents(ByVal objMenuItem As Object)
-
-    Set MnuEvt = New clsVBECmdHandler
-    Set MnuEvt.EvtHandler = Application.VBE.Events.CommandBarEvents(objMenuItem)
-    EvtHandlers.Add MnuEvt
-
-End Sub                                          ' MenuEvents
-
 Private Sub CreateXLMenu()
-    MenuBars(xlWorksheet).Menus.Add Caption:="E&xport for VCS"
-    With MenuBars(xlWorksheet).Menus("Export for VCS").MenuItems
-        .Add Caption:="&Make Config File", OnAction:="MakeConfigFile"
-        .Add Caption:="&Export", OnAction:="Export"
-        .Add Caption:="&Import", OnAction:="Import"
-    End With
-
-End Sub                                          ' CreateXLMenu
+' https://bettersolutions.com/vba/ribbon/face-ids-2003.htm for FaceIDs
+    Dim NewButton As CommandBarButton
+    
+    On Error Resume Next
+    CommandBars("Code Manager").Delete
+    On Error GoTo 0
+    
+    Dim CustomBar As CommandBar
+    Set CustomBar = CommandBars.Add(Name:="Code Manager")
+    
+    Set NewButton = CustomBar.Controls.Add(msoControlButton)
+    NewButton.OnAction = "MakeConfigFile"
+    NewButton.Caption = "Make Config File"
+    NewButton.FaceId = 538
+    NewButton.TooltipText = "Create or overwrite an existing json file directing the components to export or import"
+        
+    Set NewButton = CustomBar.Controls.Add(msoControlButton)
+    NewButton.OnAction = "Export"
+    NewButton.Caption = "Export"
+    NewButton.FaceId = 360
+    NewButton.TooltipText = "Export the components based on the json file"
+        
+    Set NewButton = CustomBar.Controls.Add(msoControlButton)
+    NewButton.OnAction = "Import"
+    NewButton.Caption = "Import"
+    NewButton.FaceId = 359
+    NewButton.TooltipText = "Import the components in a json file overwriting all existing components of the same name"
+        
+    CustomBar.Visible = True
+    
+End Sub ' CreateXLMenu
 
 Private Sub RemoveVBEAndXLMenus()
 
     On Error Resume Next
 
-    Application.VBE.CommandBars(1).controls("Export for VCS").Delete
+    Application.VBE.CommandBars(1).Controls("Custom").Delete
 
     '// Clear the EvtHandlers collection if there is anything in it
     While EvtHandlers.Count > 0
@@ -84,10 +58,27 @@ Private Sub RemoveVBEAndXLMenus()
     Set EvtHandlers = Nothing
     Set MnuEvt = Nothing
 
-    Application.CommandBars("Worksheet Menu Bar").controls("E&xport for VCS").Delete
+    Application.CommandBars("Worksheet Menu Bar").Controls("Code Manager").Delete
     On Error GoTo 0
 
 End Sub                                          ' RemoveVBEAndXLMenus
+
+Public Sub auto_open()
+    '    CreateVBEMenu
+    CreateXLMenu
+End Sub                                          ' auto_open
+
+Public Sub auto_close()
+    RemoveVBEAndXLMenus
+End Sub                                          ' auto_close
+
+Private Sub MenuEvents(ByVal objMenuItem As Object)
+
+    Set MnuEvt = New clsVBECmdHandler
+    Set MnuEvt.EvtHandler = Application.VBE.Events.CommandBarEvents(objMenuItem)
+    EvtHandlers.Add MnuEvt
+
+End Sub                                          ' MenuEvents
 
 Public Sub btnMakeConfig_onAction(control As IRibbonControl)
     MakeConfigFile

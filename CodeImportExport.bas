@@ -276,7 +276,7 @@ Public Sub Import()
     config.Project = prjActProj
     
     Dim Ary As Variant
-    Ary = Split(prjActProj.FileName, "/")
+    Ary = Split(prjActProj.FileName, "\")
     
     Dim FileName As String
     FileName = Ary(UBound(Ary, 1))
@@ -1055,27 +1055,22 @@ Private Sub ImportModule( _
     ErrorNumber = Err.Number
     On Error GoTo 0
     If ErrorNumber = 0 Then
-        Select Case MsgBox( _
-               "Module " & ModuleName & _
-               " already exists. Overwrite it?", _
-               vbYesNo Or vbExclamation, _
-               "Module Already Exists")
-        Case vbYes
-            Dim VBC As VBComponent
-            Set VBC = Project.VBComponents.Item(ModuleName)
-            If Project.VBComponents.Item(ModuleName).Type <> vbext_ct_Document Then
-                ' Can't remove a worksheet
-                Project.VBComponents.Remove VBC
-            End If
-        Case vbNo
-            Exit Sub
-        End Select
+        Dim VBC As VBComponent
+        Set VBC = Project.VBComponents.Item(ModuleName)
+        If Project.VBComponents.Item(ModuleName).Type <> vbext_ct_Document Then
+            ' Can't remove a worksheet
+            Project.VBComponents.Remove VBC
+        End If
+    Else
+        Exit Sub
     End If
     
     On Error Resume Next
+    
     Set comNewImport = Project.VBComponents.Import(ModulePath)
     ErrorNumber = Err.Number
     If ErrorNumber = 60061 Then Exit Sub         ' Module already in use
+    If ErrorNumber = 53 Then Exit Sub         ' Module does not exist
     On Error GoTo 0
     
     If comNewImport.Name <> ModuleName Then

@@ -606,6 +606,7 @@ Public Sub ReadFromProjectConfigFile()
     '// current project.
     
     '// Read JSON file and build the configuration dictionary
+    Set FSO = New FileSystemObject
     If FSO.FileExists(pConfigFile) Then
         Dim tsConfigStream As Scripting.TextStream
         Set tsConfigStream = FSO.OpenTextFile(pConfigFile, ForReading)

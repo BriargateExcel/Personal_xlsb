@@ -37,7 +37,7 @@ Private Sub Class_Initialize()
 End Sub
 
 Public Sub SetRoutine(ByVal sRoutineName As String)
-    SetPerformanceResults 1, pIndex, String(CallDepth * 4, " ") & sRoutineName
+'    SetPerformanceResults 1, pIndex, String(CallDepth * 4, " ") & sRoutineName
 End Sub
 
 Private Sub Class_Terminate()
