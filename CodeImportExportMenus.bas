@@ -26,7 +26,7 @@ Private Sub CreateXLMenu()
     NewButton.OnAction = "MakeConfigFile"
     NewButton.Caption = "Make Config File"
     NewButton.FaceId = 538
-    NewButton.TooltipText = "Create or overwrite an existing json file directing the components to export or import"
+    NewButton.TooltipText = "Create or overwrite an existing json file directing which components to export or import"
         
     Set NewButton = CustomBar.Controls.Add(msoControlButton)
     NewButton.OnAction = "Export"

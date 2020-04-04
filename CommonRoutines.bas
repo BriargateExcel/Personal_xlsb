@@ -287,7 +287,7 @@ Public Function BuildFullTracePath( _
     ' Returns a string with the full path
 
     Dim pFileName As String
-    If Right$(FileName, 4) <> ".txt" Then
+    If Strings.Right$(FileName, 4) <> ".txt" Then
         pFileName = FileName & ".txt"
     Else
         pFileName = FileName
@@ -456,7 +456,7 @@ Public Function GetASheet( _
         Dim Previous As Boolean
         
         ' Do not delete a sheet that already has a changed codename
-        If Left$(Wkbk.Worksheets(SheetName).CodeName, 5) = "Sheet" Then
+        If Strings.Left$(Wkbk.Worksheets(SheetName).CodeName, 5) = "Sheet" Then
             Previous = Application.DisplayAlerts
             Application.DisplayAlerts = False
             Wkbk.Worksheets(SheetName).Delete
@@ -909,7 +909,7 @@ Public Function TrySetTableAndRange( _
         Set ThisTable = DefaultTable
     End If
     
-    If Left$(ThisTable.Range.Address, 4) = "$A$1" Then
+    If Strings.Left$(ThisTable.Range.Address, 4) = "$A$1" Then
         Set ThisRange = ThisTable.Parent.Range("$A$2")
     Else
         ReportError "Error setting range", "Routine", RoutineName

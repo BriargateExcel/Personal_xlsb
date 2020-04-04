@@ -68,7 +68,7 @@ Public Sub MakeConfigFile()
     
     ' Get the config file and its contents (if it has contents)
     Dim ConfigFile As String
-    ConfigFile = GetConfigFile(Wkbk, prjActProj) ' Version 1.0
+    ConfigFile = GetConfigFile(Wkbk, prjActProj, "for Updating") ' Version 1.0
     If ConfigFile = "No configuration file directory selected" Then
         MsgBox "No configuration file selected and no directory " & _
                "for a new configuration file selected." & _
@@ -177,7 +177,7 @@ Public Sub Export()
     Set Wkbk = Workbooks(FSO.GetFileName(prjActProj.FileName))
 
     Dim SelectedFile As String
-    SelectedFile = GetConfigFile(Wkbk, prjActProj, False) ' Version 1.0
+    SelectedFile = GetConfigFile(Wkbk, prjActProj, "for Exporting", False) ' Version 1.0
     If SelectedFile = "No configuration file directory selected" Then
         MsgBox "No configuration file selected." & _
                vbCrLf & _
@@ -295,7 +295,7 @@ Public Sub Import()
     End If
     
     Dim SelectedFile As String
-    SelectedFile = GetConfigFile(Wkbk, prjActProj, False) ' Version 1.0
+    SelectedFile = GetConfigFile(Wkbk, prjActProj, "for Importing", False) ' Version 1.0
     If SelectedFile = "No configuration file directory selected" Then
         MsgBox "No configuration file selected." & _
                vbCrLf & _
@@ -320,9 +320,9 @@ Public Sub Import()
     config.ReferencesAddToVBRefs prjActProj.References
     
     '// Set the VBA Project name
-    If config.VBAProjectNameDeclared Then
-        prjActProj.Name = config.VBAProjectName
-    End If
+'    If config.VBAProjectNameDeclared Then
+'        prjActProj.Name = config.VBAProjectName
+'    End If
 
     MsgBox "All modules successfully imported", _
            vbOKOnly Or vbInformation, _
@@ -388,6 +388,7 @@ End Function                                     ' GetProject
 Private Function GetConfigFile( _
         ByVal Wkbk As Workbook, _
         ByVal prjActProj As VBProject, _
+        ByVal TitleSpecifier As String, _
         Optional ByVal SelectDirectory As Boolean = True _
         ) As String
 
@@ -416,7 +417,7 @@ Private Function GetConfigFile( _
     
     ' Confirm the JSON file with the user
     Dim SelectedFile As String
-    SelectedFile = GetUserConfigFile(InitialConfigFile)
+    SelectedFile = GetUserConfigFile(InitialConfigFile, TitleSpecifier)
     If SelectedFile <> "No file selected" Then
         #If DocProp = 1 Then
             If Not SetProperty(ConfigFileDocProp, PropertyLocationCustom, SelectedFile, False, Wkbk) Then
@@ -653,7 +654,9 @@ ErrorHandler:
     RaiseError Err.Number, Err.Source, RoutineName, Err.Description
 End Function                                     ' GetDocPropConfigFile
 
-Private Function GetUserConfigFile(ByVal InitialFile As String) As String
+Private Function GetUserConfigFile( _
+    ByVal InitialFile As String, _
+    ByVal TitleSpecifier As String) As String
     
     ' Open the file dialog and capture the folder's path
     ' Version 1.0
@@ -675,7 +678,7 @@ Private Function GetUserConfigFile(ByVal InitialFile As String) As String
         .Filters.Add "json", "*.json"
         .AllowMultiSelect = False
         .InitialFileName = InitialFile
-        .Title = "Choose Configuration File"
+        .Title = "Choose Configuration File " & TitleSpecifier
             
         Dim Response As Long
         Response = .Show

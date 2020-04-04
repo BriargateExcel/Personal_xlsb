@@ -14,9 +14,12 @@ Public Sub MainProgram()
     
 Done:
     MsgBox "Normal exit", vbOKOnly
+    GoTo Done2
 Halted:
     ' Use the Halted exit point after giving the user a message
     '   describing why processing did not run to completion
+    MsgBox "Abnormal exit"
+Done2:
     CloseErrorFile
     TurnOnAutomaticProcessing
     Exit Sub
