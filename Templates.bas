@@ -60,6 +60,8 @@ Private Function CheckTemplate( _
     Const RoutineName As String = Module_Name & "CheckTemplate"
     On Error GoTo ErrorHandler
     
+    CheckTemplate = True
+    
     ' Code goes here
     
 Done:
@@ -83,6 +85,8 @@ Private Function TryTemplate( _
     Const RoutineName As String = Module_Name & "TryTemplate"
     On Error GoTo ErrorHandler
     
+    TryTemplate = True
+    
     ' Code goes here
     
 Done:
@@ -94,6 +98,3 @@ ErrorHandler:
                 "Error Description", Err.Description
     RaiseError Err.Number, Err.Source, RoutineName, Err.Description
 End Function ' TryTemplate
-
-
-

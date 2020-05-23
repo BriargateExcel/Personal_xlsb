@@ -1,130 +1,106 @@
 Attribute VB_Name = "CodeImportExport"
-'
-'
-'
-' From: https://github.com/spences10/VBA-IDE-Code-Export
-'
-'
-'
 Option Explicit
+
+' Originally from: https://github.com/spences10/VBA-IDE-Code-Export
 
 Const Module_Name As String = "CodeImportExport."
 
-'// Updates the configuration file for the current active project.
-'// * Entries for modules not yet declared in the configuration file as created.
-'// * Modules listed in the configuration file which are not found are prompted
-'//   to be deleted from the configuration file.
-'// * The current loaded references are used to update the configuration file.
-'// * References in the configuration file whic hare not loaded are prompted to
-'//   be deleted from the configuration file.
+Private Type CodeType
+    FormCanceled As Boolean
+    FormDeleted As Boolean
+    
+    ModuleList As Dictionary
+    ModuleTable As ListObject
+    
+    PathFolder As Dictionary
+    PathTable As ListObject
+    Path As String
+    
+    ReferencesList As Dictionary
+    ReferencesTable As ListObject
+    
+    Project As VBProject
+    
+    Workbook As Workbook
+    Worksheet As Worksheet
+End Type
 
-Private pFormCanceled As Boolean
-Private pFormDeleted As Boolean
-Private pFormExportFlag As Boolean
+Private This As CodeType
 
-' Version 1.0
-' Refactored the config file and base path finders into separate routines
-' Added document properties for the locations of the configuration file and the base path
-
-Private Const ConfigFileDocProp As String = "ConfigFile"
-Private Const BasePathDocProp As String = "BasePath"
+Private Const VBAMakeFile As String = "VBA Make File"
+Private Const VBAModuleList As String = "VBAModuleList"
+Private Const VBASourceFolder As String = "VBASourceFolder"
+Private Const VBAReferences As String = "VBAReferences"
 
 Public FSO As FileSystemObject
 
 Public Sub MakeConfigFile()
-
-    ' This routine builds the configuration file describing the export and import contents
     
-    ' Version 1.0
-    ' Refactored GetConfigFile and GetBasePath out of MakeConfigFile
-    ' Version 1.0.3
-    ' Refactored GetModules out of MakeConfigFile
-    ' Version 1.0.4
-    ' Refactored GetReferences out of MakeConfigFile
+    ' Builds the configuration tables
     
     Const RoutineName As String = Module_Name & "MakeConfigFile"
     On Error GoTo ErrorHandler
     
-    Dim cPerf As PerformanceClass
-    If gbDebug(RoutineName) Then
-        ResetPerformance
-        Set cPerf = New PerformanceClass
-        cPerf.SetRoutine RoutineName
-    End If
+    PopulateTables "Build configuration tables for which project?"
     
-    pFormExportFlag = False
-    
-    ' Determine for which VBA Project to build config file
-    Dim prjActProj As VBProject
-    Set prjActProj = GetProject("Build Config File")
-    If prjActProj Is Nothing Then GoTo exitSub
-    
-    Dim Wkbk As Workbook
-    Set FSO = New FileSystemObject
-    Set Wkbk = Workbooks(FSO.GetFileName(prjActProj.FileName))
-        
-    Dim config As clsConfiguration
-    Set config = New clsConfiguration
-    
-    ' Get the config file and its contents (if it has contents)
-    Dim ConfigFile As String
-    ConfigFile = GetConfigFile(Wkbk, prjActProj, "for Updating") ' Version 1.0
-    If ConfigFile = "No configuration file directory selected" Then
-        MsgBox "No configuration file selected and no directory " & _
-               "for a new configuration file selected." & _
-               vbCrLf & _
-               "No configuration file created.", _
-               vbOKOnly Or vbCritical, _
-               "No Configuration File or Directory Selected"
-        Exit Sub
-    Else
-        config.ConfigFile = ConfigFile
-        config.ReadFromProjectConfigFile
-    End If
-    config.Project = prjActProj
-    ' Now have config file location and contents if it has contents
-    
-    ' Get the base path
+    ' Get the folder in which to store the code
     Dim BasePath As String
-    BasePath = GetBasePath(Wkbk)                 ' Version 1.0
+    BasePath = GetUserBasePath(This.Path)
     If BasePath = "No base path selected" Then
         MsgBox "No base path selected. No configuration file created.", _
                vbOKOnly Or vbCritical, _
                "No Base Path Selected"
         Exit Sub
     Else
-        config.BasePath = BasePath
+        This.Path = BasePath
+        This.PathFolder.Items(0).Path = BasePath
     End If
-    ' Now have the base path defined
+    ' Now have the source code folder
     
     '// Generate entries for modules not yet listed
-    GetModules prjActProj, config
+    GetModules
 
     '// Generate entries for references in the current VBProject
-    GetReferences prjActProj, config
+    GetReferences This.Project
     
-    '// Write changes to config file
-    If FSO.FileExists(config.ConfigFile) Then
-        Dim Response As Long
-        Response = MsgBox("The configuration file already exists. " & _
-                          vbCrLf & _
-                          config.ConfigFile & _
-                          "Would you like to overwrite it?", _
-                          vbYesNo Or vbExclamation, _
-                          "Configuration File Already Exists")
-        Select Case Response
-        Case vbYes
-            UpdateConfigFile config
-        Case vbNo
-            MsgBox "The configuration file was not overwritten", _
-                   vbOKOnly, _
-                   "Configuration File Not Overwritten"
-        End Select
-
+    '// Write changes to tables
+    Dim ModuleList As VBAModuleList_Table
+    Set ModuleList = New VBAModuleList_Table
+    
+    Dim Wksht As Worksheet
+    Set Wksht = This.Workbook.Worksheets("VBA Make File")
+    
+    Dim Tbl As ListObject
+    Set Tbl = Wksht.ListObjects(VBAModuleList)
+    
+    If Table.TryCopyDictionaryToTable(ModuleList, This.ModuleList, Tbl, , , True) Then
     Else
-        UpdateConfigFile config
+        ReportError "Error copying Module List to table", "Routine", RoutineName
+        GoTo Done
     End If
-    ' Config file has been updated
+    
+    Dim SourceFolder As VBASourceFolder_Table
+    Set SourceFolder = New VBASourceFolder_Table
+    Set Tbl = Wksht.ListObjects(VBASourceFolder)
+    
+    If Table.TryCopyDictionaryToTable(SourceFolder, This.PathFolder, Tbl, , , True) Then
+    Else
+        ReportError "Error loading Source Path", "Routine", RoutineName
+        GoTo Done
+    End If
+    
+    Dim RefList As VBAReferences_Table
+    Set RefList = New VBAReferences_Table
+    Set Tbl = Wksht.ListObjects(VBAReferences)
+    
+    If Table.TryCopyDictionaryToTable(RefList, This.ReferencesList, Tbl, , , True) Then
+    Else
+        ReportError "Error loading References List", "Routine", RoutineName
+        GoTo Done
+    End If
+    ' Tables have been updated
+    
+    MsgBox "Configuration Tables Built", vbOKOnly, "Configuration Tables Built"
 
 exitSub:
     Exit Sub
@@ -147,82 +123,43 @@ Public Sub Export()
     '// * References loaded in the Project which are listed in the configuration
     '//   file is deleted.
     
-    ' Version 1.0
-    ' Modified Export to use GetConfigFile
-    
     Const RoutineName As String = Module_Name & "Export"
     On Error GoTo ErrorHandler
     
-    Dim cPerf As PerformanceClass
-    If gbDebug(RoutineName) Then
-        ResetPerformance                         ' Only in the Main routine; delete in all others
-        Set cPerf = New PerformanceClass
-        cPerf.SetRoutine RoutineName
-    End If
+    PopulateTables "Export which project?"
     
-    On Error GoTo ErrorHandler
-
-    pFormExportFlag = True
-
-    Dim prjActProj As VBProject
-    Set prjActProj = GetProject("Export")
-    If prjActProj Is Nothing Then GoTo NoAction
-
-    Dim config As clsConfiguration
-    Set config = New clsConfiguration
-    config.Project = prjActProj
+    EnsurePath This.Path
     
-    Set FSO = New FileSystemObject
-    Dim Wkbk As Workbook
-    Set Wkbk = Workbooks(FSO.GetFileName(prjActProj.FileName))
-
-    Dim SelectedFile As String
-    SelectedFile = GetConfigFile(Wkbk, prjActProj, "for Exporting", False) ' Version 1.0
-    If SelectedFile = "No configuration file directory selected" Then
-        MsgBox "No configuration file selected." & _
-               vbCrLf & _
-               "Export failed.", _
-               vbOKOnly Or vbCritical, "No Configuration File Selected"
-        Exit Sub
-    Else
-        config.ConfigFile = SelectedFile
-    End If
-    
-    config.ReadFromProjectConfigFile
-
     '// Export all modules listed in the configuration
     Dim varModuleName As Variant
-    For Each varModuleName In config.ModuleNames
-        Dim strModuleName As String
-        strModuleName = varModuleName
+    
+    For Each varModuleName In This.ModuleList
         ' TODO Provide a warning if module listed in configuration is not found
-        If CheckNameInCollection(strModuleName, prjActProj.VBComponents) Then
+        If CheckNameInCollection(varModuleName, This.Project.VBComponents) Then
             Dim comModule As VBComponent
-            Set comModule = prjActProj.VBComponents(strModuleName)
+            Set comModule = This.Project.VBComponents(varModuleName)
             
-            EnsurePath config.ModuleFullPath(strModuleName)
             Dim Dest As String
-            Dest = config.ModuleFullPath(strModuleName)
+            Dest = This.Path & Application.PathSeparator & varModuleName & FileExtension(comModule)
             comModule.Export Dest
 
-            If pFormDeleted Then
+            If This.FormDeleted Then
                 If comModule.Type = vbext_ct_Document Then
                     comModule.CodeModule.DeleteLines 1, comModule.CodeModule.CountOfLines
                 Else
-                    prjActProj.VBComponents.Remove comModule
+                    This.Project.VBComponents.Remove comModule
                 End If
             End If
         End If
     Next varModuleName
 
     '// Remove all references listed
-    If pFormDeleted Then
-        Dim lngIndex As Long
-        For lngIndex = 1 To config.ReferencesCount
-            If CheckNameInCollection(config.ReferenceName(lngIndex), prjActProj.References) Then
-                prjActProj.References.Remove prjActProj.References(config.ReferenceName(lngIndex))
+    If This.FormDeleted Then
+        For Each varModuleName In This.ModuleList
+            If CheckNameInCollection(varModuleName, This.Project.References) Then
+                This.Project.References.Remove This.Project.References(varModuleName)
             End If
-        Next lngIndex
+        Next varModuleName
     End If
 
     MsgBox "All modules successfully exported", _
@@ -257,13 +194,9 @@ Public Sub Import()
     Const RoutineName As String = Module_Name & "Import"
     On Error GoTo ErrorHandler
     
-    pFormExportFlag = False
-
-    Dim prjActProj As VBProject
-    Set prjActProj = GetProject("Import")
-    If prjActProj Is Nothing Then Exit Sub
+    PopulateTables "Import which project?"
     
-    If prjActProj.Name = "Personal" Then
+    If This.Project.Name = "Personal" Then
         MsgBox "Can not import PERSONAL.xlsb because " & _
                "the import code is in PERSONAL.xlsb", _
                vbOKOnly Or vbCritical, _
@@ -271,59 +204,35 @@ Public Sub Import()
         Exit Sub
     End If
 
-    Dim config As clsConfiguration
-    Set config = New clsConfiguration
-    config.Project = prjActProj
-    
-    Dim Ary As Variant
-    Ary = Split(prjActProj.FileName, "\")
-    
-    Dim FileName As String
-    FileName = Ary(UBound(Ary, 1))
-    
-    Dim Wkbk As Workbook
-    Dim ErrorNumber As Long
-    On Error Resume Next
-    Set Wkbk = Workbooks(FileName)
-    ErrorNumber = Err.Number
-    On Error GoTo ErrorHandler
-    If ErrorNumber <> 0 Then
-        MsgBox "You must save the file before you can import into it", _
-               vbOKOnly Or vbCritical, _
-               "File Not Saved"
-        Exit Sub
-    End If
-    
-    Dim SelectedFile As String
-    SelectedFile = GetConfigFile(Wkbk, prjActProj, "for Importing", False) ' Version 1.0
-    If SelectedFile = "No configuration file directory selected" Then
-        MsgBox "No configuration file selected." & _
-               vbCrLf & _
-               "Import failed.", _
-               vbOKOnly Or vbCritical, "No Configuration File Selected"
-        Exit Sub
-    Else
-        config.ConfigFile = SelectedFile
-    End If
-    
-    config.ReadFromProjectConfigFile
-
     '// Import code from listed module files
     Dim varModuleName As Variant
-    For Each varModuleName In config.ModuleNames
-        Dim strModuleName As String
-        strModuleName = varModuleName
-        ImportModule prjActProj, strModuleName, config.ModuleFullPath(strModuleName)
+    Dim comModule As VBComponent
+    
+    For Each varModuleName In This.ModuleList
+        Set comModule = This.Project.VBComponents(varModuleName)
+        ImportModule _
+            This.Project, _
+            varModuleName, _
+            This.Path & Application.PathSeparator & _
+                This.ModuleList(varModuleName).Module & "." & This.ModuleList(varModuleName).Extension
+            
     Next varModuleName
 
     '// Add references listed in the config file
-    config.ReferencesAddToVBRefs prjActProj.References
+    Dim Entry As Variant
+    Dim Ref As VBAReferences_Table
     
-    '// Set the VBA Project name
-'    If config.VBAProjectNameDeclared Then
-'        prjActProj.Name = config.VBAProjectName
-'    End If
-
+    For Each Entry In This.ReferencesList
+        Set Ref = This.ReferencesList(Entry)
+        
+        If Not CheckNameInCollection(Ref.Name, This.Project.References) Then
+            This.Project.References.AddFromGuid _
+                GUID:=Ref.GUID, _
+                Major:=Ref.Major, _
+                Minor:=Ref.Minor
+        End If
+    Next Entry
+    
     MsgBox "All modules successfully imported", _
            vbOKOnly Or vbInformation, _
            "Modules Imported Successfully"
@@ -336,9 +245,10 @@ ErrorHandler:
     CloseErrorFile
 End Sub                                          ' Import
 
-Private Function GetProject(ByVal TitleText As String) As VBProject
-    ' Version 1.0
-    ' Refactored this out of MakeConfigFile
+Private Sub GetProject( _
+    ByVal TitleText As String, _
+    ByRef ThisProject As VBProject, _
+    ByRef Wkbk As Workbook)
     
     Const RoutineName As String = Module_Name & "GetProject"
     On Error GoTo ErrorHandler
@@ -357,155 +267,54 @@ Private Function GetProject(ByVal TitleText As String) As VBProject
     Else
         GitForm.ProjectList.Text = GitForm.ProjectList.List(0)
     End If
+    
     GitForm.Caption = "Select the VBA Project to " & TitleText
     GitForm.Show
-    If pFormCanceled Then
+    
+    Dim SelectedProject As VBProject
+    
+    If This.FormCanceled Then
         ' Either Cancel button or dialog close button (red X) selected
         MsgBox TitleText & " canceled by user", _
                vbOKOnly Or vbInformation, _
                "Cancel Selected"
-        Set GetProject = Nothing
-        Exit Function
+        Set SelectedProject = Nothing
+        Set Wkbk = Nothing
+        Exit Sub
     Else
-        Dim prjActProj As VBProject
-        Set prjActProj = Application.VBE.VBProjects(GitForm.ProjectList.Value)
+        Set SelectedProject = Application.VBE.VBProjects(GitForm.ProjectList.Value)
     End If
 
-    If prjActProj.Protection = 1 Then
+    If SelectedProject.Protection = 1 Then
         MsgBox "This project is protected, not possible to export the code"
-        Exit Function
+        Exit Sub
     End If
     
-    Set GetProject = prjActProj
+    Set ThisProject = SelectedProject
+    
+    Dim Entry As Workbook
+    For Each Entry In Workbooks
+        If Entry.VBProject.Name = SelectedProject.Name Then
+            Set Wkbk = Entry
+            Exit For
+        End If
+    Next Entry
     
     '@Ignore LineLabelNotUsed
 Done:
-    Exit Function
+    Exit Sub
 ErrorHandler:
     RaiseError Err.Number, Err.Source, RoutineName, Err.Description
-End Function                                     ' GetProject
+End Sub                                          ' GetProject
 
-Private Function GetConfigFile( _
-        ByVal Wkbk As Workbook, _
-        ByVal prjActProj As VBProject, _
-        ByVal TitleSpecifier As String, _
-        Optional ByVal SelectDirectory As Boolean = True _
-        ) As String
-
-    ' This routine checks the document properties to see if the JSON file has already been stored
-    ' It starts from that location when asking the user for the JSON file
-    ' It stores the JSON file location back into the document properties
-    ' It raises an error if the user does not select a configuration file
-    '   or a directory to put a new configuration file
-    ' Version 1.0
-    ' Refactored this out of MakeConfigFile
-    ' Version 1.0.2
-    ' Added conditional compilation for document properites
-    
-    Const RoutineName As String = Module_Name & "GetConfigFile"
-    On Error GoTo ErrorHandler
-    
-    Dim cPerf As PerformanceClass
-    If gbDebug(RoutineName) Then
-        Set cPerf = New PerformanceClass
-        cPerf.SetRoutine RoutineName
-    End If
-    
-    ' Get the JSON file location from the document properties
-    Dim InitialConfigFile As String
-    InitialConfigFile = GetDocPropConfigFile(Wkbk)
-    
-    ' Confirm the JSON file with the user
-    Dim SelectedFile As String
-    SelectedFile = GetUserConfigFile(InitialConfigFile, TitleSpecifier)
-    If SelectedFile <> "No file selected" Then
-        #If DocProp = 1 Then
-            If Not SetProperty(ConfigFileDocProp, PropertyLocationCustom, SelectedFile, False, Wkbk) Then
-                ' This is not fatal
-                MsgBox "Unable to store document property", _
-                       vbOKOnly Or vbCritical, _
-                       "Unable to Store Document Property"
-            End If
-        #End If
-    Else
-        If Not SelectDirectory Then
-            ' This is fatal
-            GetConfigFile = "No configuration file directory selected"
-            Exit Function
-        End If
-        ' The user didn't select an existing configuration file
-        ' Give the user an opportunity to select a directory for a new configuration file
-        MsgBox "No configuration file selected. " & _
-               vbCrLf & _
-               "Select directory for new configuration file.", _
-               vbOKOnly Or vbCritical, _
-               "No Configuration File"
-               
-        Dim Path As String
-        Path = FSO.GetParentFolderName(Wkbk.Path)
-        
-        Dim SelectedConfigDirectory As String
-        SelectedConfigDirectory = GetConfigDirectory(Path)
-        If SelectedConfigDirectory = "No directory selected" Then
-            ' This is fatal
-            GetConfigFile = "No configuration file directory selected"
-            Exit Function
-        Else
-            SelectedFile = _
-                         SelectedConfigDirectory & _
-                         Application.PathSeparator & _
-                         prjActProj.Name & ".MakeFile.json"
-        End If
-    
-        #If DocProp = 1 Then
-            Dim GoodProperty As Boolean
-            Dim ErrorNumber As Long
-            On Error Resume Next
-            GoodProperty = SetProperty(ConfigFileDocProp, PropertyLocationCustom, SelectedFile)
-            ErrorNumber = Err.Number
-            On Error GoTo ErrorHandler
-    
-            If ErrorNumber = 0 Then
-                If Not GoodProperty Then
-                    ' This is not fatal
-                    MsgBox "Unable to store configuration file path in " & _
-                           vbCrLf & _
-                           Wkbk.Name & "'s document properties", _
-                           vbOKOnly Or vbCritical, _
-                           "Unable to Store Config File Path"
-                End If
-            End If
-        #End If
-    End If
-    
-    GetConfigFile = SelectedFile
-    
-    '@Ignore LineLabelNotUsed
-Done:
-    Exit Function
-ErrorHandler:
-    RaiseError Err.Number, Err.Source, RoutineName, Err.Description
-End Function                                     ' GetConfigFile
-
-Private Sub GetModules( _
-        ByVal prjActProj As VBProject, _
-        ByRef config As clsConfiguration)
+Private Sub GetModules()
 
     ' This routine gathers a list of the modules in this project
     ' Compares that list with the existing config file
     ' Modifies the list of modules if the user desires
     
-    ' Version 1.0.3
-    ' Refactored GetModules out of MakeConfigFile
-    
     Const RoutineName As String = Module_Name & "GetModules"
     On Error GoTo ErrorHandler
-    
-    Dim cPerf As PerformanceClass
-    If gbDebug(RoutineName) Then
-        Set cPerf = New PerformanceClass
-        cPerf.SetRoutine RoutineName
-    End If
     
     Dim collAddList As Collection
     Set collAddList = New Collection
@@ -513,24 +322,26 @@ Private Sub GetModules( _
     Dim strAddListStr As String
     strAddListStr = vbNullString
     
-    Dim strModuleName As String
     Dim comModule As VBComponent
-    For Each comModule In prjActProj.VBComponents
-        Dim boolCreateNewEntry  As Boolean
+    Dim boolCreateNewEntry  As Boolean
+    
+    For Each comModule In This.Project.VBComponents
         boolCreateNewEntry = _
                            ExportableModule(comModule) And _
-                           Not config.ModulePathDeclared(comModule.Name)
+                           Not This.ModuleList.Exists(comModule.Name)
 
         If boolCreateNewEntry Then
-            config.ModulePath(comModule.Name) = comModule.Name & "." & FileExtension(comModule)
             collAddList.Add comModule.Name
             strAddListStr = strAddListStr & comModule.Name & vbNewLine
         End If
     Next comModule
 
     ' Ask the user if they want to add new modules to the config file
+    Dim intUserResponse As Long
+    Dim NewMod As VBAModuleList_Table
+    Dim varModuleName As Variant
+    
     If collAddList.Count > 0 Then
-        Dim intUserResponse As Long
         intUserResponse = MsgBox( _
                           Prompt:= _
                           "There are some modules not listed in the configuration file which " & _
@@ -545,10 +356,15 @@ Private Sub GetModules( _
                           Title:="New Modules")
 
         If intUserResponse = vbYes Then
-            Dim varModuleName As Variant
             For Each varModuleName In collAddList
-                strModuleName = varModuleName
-                config.ModulePath(strModuleName) = strModuleName & "." & FileExtension(prjActProj.VBComponents(strModuleName))
+                Set NewMod = New VBAModuleList_Table
+                If This.ModuleList.Exists(varModuleName) Then
+                    ReportWarning "Duplicate module name", "Routine", RoutineName, "Module Name", varModuleName
+                Else
+                    NewMod.Module = varModuleName
+                    NewMod.Extension = FileExtension(This.Project.VBComponents(varModuleName))
+                    This.ModuleList.Add varModuleName, NewMod
+                End If
             Next varModuleName
         End If
     End If
@@ -561,21 +377,20 @@ Private Sub GetModules( _
     Dim strDeleteListStr As String
     strDeleteListStr = vbNullString
 
-    For Each varModuleName In config.ModuleNames
-        strModuleName = varModuleName
-
-        Dim boolDeleteModule As Boolean
+    Dim boolDeleteModule As Boolean
+    
+    For Each varModuleName In This.ModuleList
         boolDeleteModule = True
 
-        If CheckNameInCollection(strModuleName, prjActProj.VBComponents) Then
-            If ExportableModule(prjActProj.VBComponents(strModuleName)) Then
+        If CheckNameInCollection(varModuleName, This.Project.VBComponents) Then
+            If ExportableModule(This.Project.VBComponents(varModuleName)) Then
                 boolDeleteModule = False
             End If
         End If
 
         If boolDeleteModule Then
-            collDeleteList.Add strModuleName
-            strDeleteListStr = strDeleteListStr & strModuleName & vbNewLine
+            collDeleteList.Add varModuleName
+            strDeleteListStr = strDeleteListStr & varModuleName & vbNewLine
         End If
     Next varModuleName
     ' Now have a list of modules to potentially delete
@@ -596,8 +411,7 @@ Private Sub GetModules( _
 
         If intUserResponse = vbYes Then
             For Each varModuleName In collDeleteList
-                strModuleName = varModuleName
-                config.ModulePathRemove strModuleName
+                This.ModuleList.Remove varModuleName
             Next varModuleName
         End If
     End If
@@ -609,94 +423,6 @@ ErrorHandler:
     RaiseError Err.Number, Err.Source, RoutineName, Err.Description
 End Sub                                          ' GetModules
 
-Private Function GetDocPropConfigFile(ByVal Wkbk As Workbook) As String
-
-    ' Version 1.0
-    ' Part of refactoring GetConfigFile
-    ' Version 1.0.1
-    ' Put this routine into normal form
-    ' Version 1.0.2
-    ' Added conditional compilation for document properites
-    
-    Const RoutineName As String = Module_Name & "GetDocPropConfigFile"
-    On Error GoTo ErrorHandler
-    
-    Dim cPerf As PerformanceClass
-    If gbDebug(RoutineName) Then
-        Set cPerf = New PerformanceClass
-        cPerf.SetRoutine RoutineName
-    End If
-    
-    #If DocProp = 1 Then
-        Dim ErrorNumber As Long
-        Dim GoodName As Boolean
-        
-        On Error Resume Next
-        GoodName = NameExists(ConfigFileDocProp, Wkbk)
-        ErrorNumber = Err.Number
-        On Error GoTo 0
-    
-        If ErrorNumber = 0 Then
-            If GoodName Then
-                GetDocPropConfigFile = GetProperty(ConfigFileDocProp, PropertyLocationCustom, Wkbk)
-            Else
-                GetDocPropConfigFile = vbNullString
-            End If
-        Else
-            GetDocPropConfigFile = vbNullString
-        End If
-    #End If
-    
-    '@Ignore LineLabelNotUsed
-Done:
-    Exit Function
-ErrorHandler:
-    RaiseError Err.Number, Err.Source, RoutineName, Err.Description
-End Function                                     ' GetDocPropConfigFile
-
-Private Function GetUserConfigFile( _
-    ByVal InitialFile As String, _
-    ByVal TitleSpecifier As String) As String
-    
-    ' Open the file dialog and capture the folder's path
-    ' Version 1.0
-    ' Part of refactoring GetConfigFile
-    ' Version 1.0.1
-    ' Put this routine into normal form
-    
-    Const RoutineName As String = Module_Name & "GetUserConfigFile"
-    On Error GoTo ErrorHandler
-    
-    Dim cPerf As PerformanceClass
-    If gbDebug(RoutineName) Then
-        Set cPerf = New PerformanceClass
-        cPerf.SetRoutine RoutineName
-    End If
-    
-    With Application.FileDialog(msoFileDialogOpen)
-        .Filters.Clear
-        .Filters.Add "json", "*.json"
-        .AllowMultiSelect = False
-        .InitialFileName = InitialFile
-        .Title = "Choose Configuration File " & TitleSpecifier
-            
-        Dim Response As Long
-        Response = .Show
-        If Response <> 0 Then
-            GetUserConfigFile = .SelectedItems(1)
-        Else
-            GetUserConfigFile = "No file selected"
-        End If
-            
-    End With
-    
-    '@Ignore LineLabelNotUsed
-Done:
-    Exit Function
-ErrorHandler:
-    RaiseError Err.Number, Err.Source, RoutineName, Err.Description
-End Function                                     ' GetUserConfigFile
-
 Private Function GetConfigDirectory(ByVal InitialDirectory As String) As String
     
     ' Open the file dialog and capture the folder's path
@@ -705,12 +431,6 @@ Private Function GetConfigDirectory(ByVal InitialDirectory As String) As String
     
     Const RoutineName As String = Module_Name & "GetConfigDirectory"
     On Error GoTo ErrorHandler
-    
-    Dim cPerf As PerformanceClass
-    If gbDebug(RoutineName) Then
-        Set cPerf = New PerformanceClass
-        cPerf.SetRoutine RoutineName
-    End If
     
     With Application.FileDialog(msoFileDialogFolderPicker)
         .AllowMultiSelect = False
@@ -733,111 +453,6 @@ ErrorHandler:
     RaiseError Err.Number, Err.Source, RoutineName, Err.Description
 End Function                                     ' GetConfigDirectory
 
-Private Function GetBasePath( _
-        ByVal Wkbk As Workbook _
-        ) As String
-
-    ' This routine checks the document properties to see if the base path has already been recorded
-    ' It starts from that location when asking the user for the base path
-    ' It stores the base path location back into the document properties
-    
-    ' Version 1.0
-    ' Refactored out of MakeConfigFile then patterned  after GetConfigFile
-    ' Version 1.0.2
-    ' Added conditional compilation for document properites
-        
-    Const RoutineName As String = Module_Name & "GetBasePath"
-    On Error GoTo ErrorHandler
-    
-    Dim cPerf As PerformanceClass
-    If gbDebug(RoutineName) Then
-        Set cPerf = New PerformanceClass
-        cPerf.SetRoutine RoutineName
-    End If
-    
-    ' Get the base path location from the document properties
-    Dim InitialBasePath As String
-    InitialBasePath = GetDocPropBasePath(Wkbk)
-    
-    ' If the base path is stored, it is one folder level too deep
-    '   for the directory selector
-    ' Eliminate the last folder level
-    InitialBasePath = FSO.GetParentFolderName(InitialBasePath)
-    
-    ' Confirm the base path with the user
-    ' Or let the user select a new base path
-    Dim SelectedBasePath As String
-    SelectedBasePath = GetUserBasePath(InitialBasePath)
-    If SelectedBasePath <> "No base path selected" Then
-        #If DocProp = 1 Then
-            If Not SetProperty(BasePathDocProp, PropertyLocationCustom, SelectedBasePath, False, Wkbk) Then
-                ' This is not fatal
-                MsgBox "Unable to set base path document property", _
-                       vbOKOnly Or vbCritical, _
-                       "Unable to Set Base Path Document Property"
-            End If
-        #End If
-    Else
-        ' User did not select a base path
-        ' This is fatal
-        GetBasePath = "No base path selected"
-        Exit Function
-    End If
-    
-    GetBasePath = SelectedBasePath
-    
-    '@Ignore LineLabelNotUsed
-Done:
-    Exit Function
-ErrorHandler:
-    RaiseError Err.Number, Err.Source, RoutineName, Err.Description
-End Function                                     ' GetBasePath
-
-Private Function GetDocPropBasePath(ByVal Wkbk As Workbook) As String
-        
-    ' Version 1.0
-    ' Part of refactoring GetBasePath
-    ' Version 1.0.1
-    ' Put this routine into normal form
-    ' Version 1.0.2
-    ' Added conditional compilation for document properites
-    
-    Const RoutineName As String = Module_Name & "FunctionTemplate"
-    On Error GoTo ErrorHandler
-    
-    Dim cPerf As PerformanceClass
-    If gbDebug(RoutineName) Then
-        Set cPerf = New PerformanceClass
-        cPerf.SetRoutine RoutineName
-    End If
-    
-    #If DocProp = 1 Then
-        Dim ErrorNumber As Long
-        Dim GoodName As Boolean
-        
-        On Error Resume Next
-        GoodName = NameExists(BasePathDocProp, Wkbk)
-        ErrorNumber = Err.Number
-        On Error GoTo 0
-    
-        If ErrorNumber = 0 Then
-            If GoodName Then
-                GetDocPropBasePath = GetProperty(BasePathDocProp, PropertyLocationCustom, Wkbk)
-            Else
-                GetDocPropBasePath = vbNullString
-            End If
-        Else
-            GetDocPropBasePath = vbNullString
-        End If
-    #End If
-    
-    '@Ignore LineLabelNotUsed
-Done:
-    Exit Function
-ErrorHandler:
-    RaiseError Err.Number, Err.Source, RoutineName, Err.Description
-End Function                                     ' FunctionTemplate
-
 Private Function GetUserBasePath(ByVal InitialDirectory As String) As String
     
     ' Open the file dialog and capture the folder's path
@@ -848,12 +463,6 @@ Private Function GetUserBasePath(ByVal InitialDirectory As String) As String
     
     Const RoutineName As String = Module_Name & "GetUserBasePath"
     On Error GoTo ErrorHandler
-    
-    Dim cPerf As PerformanceClass
-    If gbDebug(RoutineName) Then
-        Set cPerf = New PerformanceClass
-        cPerf.SetRoutine RoutineName
-    End If
     
     With Application.FileDialog(msoFileDialogFolderPicker)
         .AllowMultiSelect = False
@@ -876,25 +485,14 @@ ErrorHandler:
     RaiseError Err.Number, Err.Source, RoutineName, Err.Description
 End Function                                     ' GetUserBasePath
 
-Private Sub GetReferences( _
-        ByVal prjActProj As VBProject, _
-        ByRef config As clsConfiguration)
+Private Sub GetReferences(ByVal ThisProject As VBProject)
 
     ' This routine gathers a list of the references in this project
     ' Compares that list with the existing config file
     ' Modifies the list of reference if the user desires
     
-    ' Version 1.0.4
-    ' Refactored GetReferences out of MakeConfigFile
-    
     Const RoutineName As String = Module_Name & "GetReferences"
     On Error GoTo ErrorHandler
-    
-    Dim cPerf As PerformanceClass
-    If gbDebug(RoutineName) Then
-        Set cPerf = New PerformanceClass
-        cPerf.SetRoutine RoutineName
-    End If
     
     Dim collAddList As Collection
     Set collAddList = New Collection
@@ -903,10 +501,10 @@ Private Sub GetReferences( _
     strAddListStr = vbNullString
     
     Dim refReference As Reference
-    For Each refReference In prjActProj.References
+    For Each refReference In ThisProject.References
         If Not refReference.BuiltIn Then
             If ReferenceToAdd(refReference) Then
-                If Not config.ReferenceExists(refReference) Then
+                If Not This.ReferencesList.Exists(refReference.Name) Then
                     collAddList.Add refReference
                     strAddListStr = strAddListStr & refReference.Name & vbNewLine
                 End If
@@ -934,9 +532,20 @@ Private Sub GetReferences( _
             Dim I As Long
             I = 1
             Dim Ref As Variant
+            Dim NewRef As VBAReferences_Table
             For Each Ref In collAddList
-                config.ReferencesUpdateFromVBRef Ref
-                I = I + 1
+                If This.ReferencesList.Exists(Ref.Name) Then
+                    ReportWarning "Duplicate reference name", "Routine", RoutineName, "Reference Name", Ref
+                Else
+                    Set NewRef = New VBAReferences_Table
+                    
+                    NewRef.Name = Ref.Name
+                    NewRef.Description = Ref.Description
+                    NewRef.GUID = Ref.GUID
+                    NewRef.Major = Ref.Major
+                    NewRef.Minor = Ref.Minor
+                    This.ReferencesList.Add Ref.Name, NewRef
+                End If
             Next Ref
         End If
     End If
@@ -949,13 +558,12 @@ Private Sub GetReferences( _
     Dim strDeleteListStr As String
     strDeleteListStr = vbNullString
     
-    Dim lngIndex As Long
-    For lngIndex = config.ReferencesCount To 1 Step -1
-        If Not CheckNameInCollection(config.ReferenceName(lngIndex), prjActProj.References) Then
-            collDeleteList.Add lngIndex
-            strDeleteListStr = strDeleteListStr & config.ReferenceName(lngIndex) & vbNewLine
+    For Each Ref In This.ReferencesList
+        If Not CheckNameInCollection(Ref, ThisProject.References) Then
+            collDeleteList.Add Ref
+            strDeleteListStr = strDeleteListStr & Ref & vbNewLine
         End If
-    Next
+    Next Ref
 
     ' Ask the user if they want to delete any references
     If collDeleteList.Count > 0 Then
@@ -970,11 +578,9 @@ Private Sub GetReferences( _
                           Title:="Missing References")
 
         If intUserResponse = vbYes Then
-            Dim varIndex As Variant
-            For Each varIndex In collDeleteList
-                lngIndex = varIndex
-                config.ReferenceRemove lngIndex
-            Next varIndex
+            For Each Ref In collDeleteList
+                This.ReferencesList.Remove Ref
+            Next Ref
         End If
     End If
     
@@ -995,12 +601,6 @@ Private Function ReferenceToAdd(ByVal ThisRef As Reference) As Boolean
     
     Const RoutineName As String = Module_Name & "ReferenceToAdd"
     On Error GoTo ErrorHandler
-    
-    Dim cPerf As PerformanceClass
-    If gbDebug(RoutineName) Then
-        Set cPerf = New PerformanceClass
-        cPerf.SetRoutine RoutineName
-    End If
     
     Dim NeededRef As Boolean
     Dim ErrorNumber As Long
@@ -1033,7 +633,7 @@ ErrorHandler:
 End Function                                     ' ReferenceToAdd
 
 Private Sub ImportModule( _
-        ByVal Project As VBProject, _
+        ByVal ThisProject As VBProject, _
         ByVal ModuleName As String, _
         ByVal ModulePath As String)
     '// Import a VBA code module... how hard could it be right?
@@ -1043,26 +643,20 @@ Private Sub ImportModule( _
     Const RoutineName As String = Module_Name & "ImportModule"
     On Error GoTo ErrorHandler
     
-    Dim cPerf As PerformanceClass
-    If gbDebug(RoutineName) Then
-        Set cPerf = New PerformanceClass
-        cPerf.SetRoutine RoutineName
-    End If
-    
     Dim ErrorNumber As Long
     Dim comNewImport As VBComponent
     
     Dim NameToCheck As String
     On Error Resume Next
-    NameToCheck = Project.VBComponents.Item(ModuleName).Name
+    NameToCheck = ThisProject.VBComponents.Item(ModuleName).Name
     ErrorNumber = Err.Number
     On Error GoTo 0
     If ErrorNumber = 0 Then
         Dim VBC As VBComponent
-        Set VBC = Project.VBComponents.Item(ModuleName)
-        If Project.VBComponents.Item(ModuleName).Type <> vbext_ct_Document Then
+        Set VBC = ThisProject.VBComponents.Item(ModuleName)
+        If ThisProject.VBComponents.Item(ModuleName).Type <> vbext_ct_Document Then
             ' Can't remove a worksheet
-            Project.VBComponents.Remove VBC
+            ThisProject.VBComponents.Remove VBC
         End If
     Else
         Exit Sub
@@ -1070,17 +664,17 @@ Private Sub ImportModule( _
     
     On Error Resume Next
     
-    Set comNewImport = Project.VBComponents.Import(ModulePath)
+    Set comNewImport = ThisProject.VBComponents.Import(ModulePath)
     ErrorNumber = Err.Number
     If ErrorNumber = 60061 Then Exit Sub         ' Module already in use
     If ErrorNumber = 53 Then Exit Sub         ' Module does not exist
     On Error GoTo 0
     
     If comNewImport.Name <> ModuleName Then
-        If CheckNameInCollection(ModuleName, Project.VBComponents) Then
+        If CheckNameInCollection(ModuleName, ThisProject.VBComponents) Then
 
             Dim comExistingComp As VBComponent
-            Set comExistingComp = Project.VBComponents(ModuleName)
+            Set comExistingComp = ThisProject.VBComponents(ModuleName)
             If comExistingComp.Type = vbext_ct_Document Then
 
                 Dim modCodeCopy As CodeModule
@@ -1095,13 +689,13 @@ Private Sub ImportModule( _
                     modCodePaste.AddFromString modCodeCopy.lines(1, modCodeCopy.CountOfLines)
                 End If
                 
-                Project.VBComponents.Remove comNewImport
+                ThisProject.VBComponents.Remove comNewImport
 
             Else
                 comExistingComp.Name = comExistingComp.Name & "_remove"
-                Project.VBComponents.Remove comExistingComp
+                ThisProject.VBComponents.Remove comExistingComp
                 comNewImport.Name = ModuleName   ' TODO fails on work computer
-                Project.VBComponents.Remove comExistingComp
+                ThisProject.VBComponents.Remove comExistingComp
             End If
         Else
 
@@ -1125,12 +719,6 @@ Private Function ExportableModule(ByVal comModule As VBComponent) As Boolean
     Const RoutineName As String = Module_Name & "ExportableModule"
     On Error GoTo ErrorHandler
     
-    Dim cPerf As PerformanceClass
-    If gbDebug(RoutineName) Then
-        Set cPerf = New PerformanceClass
-        cPerf.SetRoutine RoutineName
-    End If
-    
     ExportableModule = _
                      (Not ModuleEmpty(comModule)) _
                      And _
@@ -1152,12 +740,6 @@ Private Function ModuleEmpty(ByVal comModule As VBComponent) As Boolean
     
     Const RoutineName As String = Module_Name & "ModuleEmpty"
     On Error GoTo ErrorHandler
-    
-    Dim cPerf As PerformanceClass
-    If gbDebug(RoutineName) Then
-        Set cPerf = New PerformanceClass
-        cPerf.SetRoutine RoutineName
-    End If
     
     ModuleEmpty = True
 
@@ -1190,19 +772,13 @@ Private Function FileExtension(ByVal comModule As VBComponent) As String
     Const RoutineName As String = Module_Name & "FileExtension"
     On Error GoTo ErrorHandler
     
-    Dim cPerf As PerformanceClass
-    If gbDebug(RoutineName) Then
-        Set cPerf = New PerformanceClass
-        cPerf.SetRoutine RoutineName
-    End If
-    
     Select Case comModule.Type
     Case vbext_ct_StdModule
-        FileExtension = "bas"
+        FileExtension = ".bas"
     Case vbext_ct_ClassModule, vbext_ct_Document
-        FileExtension = "cls"
+        FileExtension = ".cls"
     Case vbext_ct_MSForm
-        FileExtension = "frm"
+        FileExtension = ".frm"
     Case Else
         FileExtension = vbNullString
     End Select
@@ -1235,9 +811,6 @@ Private Sub EnsurePath(ByVal Path As String)
             If FSO.FileExists(strParentPath) Then
                 ReportError "No path exists", _
                             "Path", strParentPath
-                '                Err.Raise NoPathExists, _
-                '                          RoutineName, _
-                '                          NoPathExistsDescription & strParentPath
             Else
                 FSO.CreateFolder (strParentPath)
             End If
@@ -1251,40 +824,8 @@ ErrorHandler:
     RaiseError Err.Number, Err.Source, RoutineName, Err.Description
 End Sub                                          ' EnsurePath
 
-Private Sub UpdateConfigFile(ByVal config As clsConfiguration)
-
-    ' This routine writes the configuration file
-    ' Version 1.0.1
-    ' Put this routine into normal form
-    
-    Const RoutineName As String = Module_Name & "UpdateConfigFile"
-    On Error GoTo ErrorHandler
-    
-    Dim cPerf As PerformanceClass
-    If gbDebug(RoutineName) Then
-        Set cPerf = New PerformanceClass
-        cPerf.SetRoutine RoutineName
-    End If
-    
-    config.WriteToProjectConfigFile
-
-    MsgBox "Configuration file was successfully updated. File:" & _
-           vbCrLf & _
-           config.ConfigFile & _
-           vbCrLf & vbCrLf & _
-           "Please review the file with a text editor. " & _
-           "For details see: https://github.com/spences10/VBA-IDE-Code-Export#the-configuration-file", , _
-           "Configuration File Updated"
-    
-    '@Ignore LineLabelNotUsed
-Done:
-    Exit Sub
-ErrorHandler:
-    RaiseError Err.Number, Err.Source, RoutineName, Err.Description
-End Sub                                          ' UpdateConfigFile
-
 Public Sub LetGitFormCanceled(ByVal Canx As Boolean)
-    pFormCanceled = Canx
+    This.FormCanceled = Canx
 End Sub                                          ' LetGitFormCanceled
 
 Public Sub LetGitFormDelete(ByVal DeleteCheck As Boolean)
@@ -1294,11 +835,71 @@ Public Sub LetGitFormDelete(ByVal DeleteCheck As Boolean)
                vbYesNo Or vbExclamation, _
                "Delete All Code?")
         Case vbYes
-            pFormDeleted = True
+            This.FormDeleted = True
         Case vbNo
-            pFormDeleted = False
+            This.FormDeleted = False
         End Select
     End If
 End Sub                                          ' LetGitFormDelete
 
+Private Sub PopulateTables(ByVal Title As String)
+
+    ' Reads all the data from the tables
+    
+    Const RoutineName As String = Module_Name & "PopulateTables"
+    On Error GoTo ErrorHandler
+    
+    GetProject Title, This.Project, This.Workbook
+    
+    Set This.Worksheet = This.Workbook.Worksheets(VBAMakeFile)
+    
+    Dim ModuleList As VBAModuleList_Table
+    Set ModuleList = New VBAModuleList_Table
+    
+    Set This.ModuleTable = This.Worksheet.ListObjects(VBAModuleList)
+    
+    If Table.TryCopyTableToDictionary( _
+        ModuleList, This.ModuleList, This.ModuleTable, False) _
+    Then
+    Else
+        ReportError "Error loading Module List", "Routine", RoutineName
+        GoTo Done
+    End If
+    
+    Dim SourceFolder As VBASourceFolder_Table
+    Set SourceFolder = New VBASourceFolder_Table
+    
+    Set This.PathTable = This.Worksheet.ListObjects(VBASourceFolder)
+       
+    If Table.TryCopyTableToDictionary( _
+        SourceFolder, This.PathFolder, This.PathTable, False) _
+    Then
+        This.Path = This.PathFolder.Items(0).Path
+    Else
+        ReportError "Error loading Source Path", "Routine", RoutineName
+        GoTo Done
+    End If
+    
+    Dim RefList As VBAReferences_Table
+    Set RefList = New VBAReferences_Table
+    
+    Set This.ReferencesTable = This.Worksheet.ListObjects(VBAReferences)
+    
+    If Table.TryCopyTableToDictionary( _
+        RefList, This.ReferencesList, This.ReferencesTable, False) _
+    Then
+    Else
+        ReportError "Error loading References List", "Routine", RoutineName
+        GoTo Done
+    End If
+    
+Done:
+    Exit Sub
+ErrorHandler:
+    ReportError "Exception raised", _
+                "Routine", RoutineName, _
+                "Error Number", Err.Number, _
+                "Error Description", Err.Description
+    RaiseError Err.Number, Err.Source, RoutineName, Err.Description
+End Sub ' PopulateTables
 
