@@ -20,8 +20,8 @@ Private Sub CancelButton_Click()
     GitForm.Hide
 End Sub
 
-Private Sub DeleteBox_Click()
-    If DeleteBox Then LetGitFormDelete True
+Private Sub CommonModules_Click()
+    If CommonModules Then CopyCommonModules True
 End Sub
 
 Private Sub SelectButton_Click()
@@ -30,11 +30,11 @@ Private Sub SelectButton_Click()
 End Sub
 
 Private Sub UserForm_Activate()
-    ' Version 1.0.2
-    ' Added positioning to the middle of the application
-    
     LetGitFormCanceled False
-    LetGitFormDelete False
+    
+    CommonModules = False
+    CopyCommonModules False
+    
     With GitForm
         .StartUpPosition = 0
         .Left = Application.Left + (0.5 * Application.Width) - (0.5 * .Width)

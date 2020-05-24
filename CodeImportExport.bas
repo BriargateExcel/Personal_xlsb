@@ -23,13 +23,21 @@ Private Type CodeType
     
     Workbook As Workbook
     Worksheet As Worksheet
+    
+    CopyCommonModules As Boolean
 End Type
 
 Private This As CodeType
 
 Private Const VBAMakeFile As String = "VBA Make File"
+Private Const VBACommonFile As String = "VBA Common Make File"
+
 Private Const VBAModuleList As String = "VBAModuleList"
+Private Const VBACommonModuleList As String = "VBACommonModuleList"
+
 Private Const VBASourceFolder As String = "VBASourceFolder"
+Private Const VBACommonSourceFolder As String = "VBACommonSourceFolder"
+
 Private Const VBAReferences As String = "VBAReferences"
 
 Public FSO As FileSystemObject
@@ -42,6 +50,17 @@ Public Sub MakeConfigFile()
     On Error GoTo ErrorHandler
     
     PopulateTables "Build configuration tables for which project?"
+    
+    If This.FormCanceled Then Exit Sub
+    
+    If This.CopyCommonModules And This.Workbook.Name <> "PERSONAL.xlsb" Then
+        MsgBox "Can not build tables for Common Routines." & vbCrLf & _
+            "Must be built by hand" & vbCrLf & _
+            "Go to View -> Window/Unhide to make PERSONAL.xlsb visible.", _
+            vbOKOnly, _
+            "Can Not Build Tables for Common Routines"
+        Exit Sub
+    End If
     
     ' Get the folder in which to store the code
     Dim BasePath As String
@@ -61,29 +80,14 @@ Public Sub MakeConfigFile()
     GetModules
 
     '// Generate entries for references in the current VBProject
-    GetReferences This.Project
+    GetReferences
     
     '// Write changes to tables
-    Dim ModuleList As VBAModuleList_Table
-    Set ModuleList = New VBAModuleList_Table
-    
-    Dim Wksht As Worksheet
-    Set Wksht = This.Workbook.Worksheets("VBA Make File")
-    
     Dim Tbl As ListObject
-    Set Tbl = Wksht.ListObjects(VBAModuleList)
-    
-    If Table.TryCopyDictionaryToTable(ModuleList, This.ModuleList, Tbl, , , True) Then
-    Else
-        ReportError "Error copying Module List to table", "Routine", RoutineName
-        GoTo Done
-    End If
-    
     Dim SourceFolder As VBASourceFolder_Table
     Set SourceFolder = New VBASourceFolder_Table
-    Set Tbl = Wksht.ListObjects(VBASourceFolder)
     
-    If Table.TryCopyDictionaryToTable(SourceFolder, This.PathFolder, Tbl, , , True) Then
+    If Table.TryCopyDictionaryToTable(SourceFolder, This.PathFolder, This.PathTable, , , True) Then
     Else
         ReportError "Error loading Source Path", "Routine", RoutineName
         GoTo Done
@@ -91,11 +95,18 @@ Public Sub MakeConfigFile()
     
     Dim RefList As VBAReferences_Table
     Set RefList = New VBAReferences_Table
-    Set Tbl = Wksht.ListObjects(VBAReferences)
     
-    If Table.TryCopyDictionaryToTable(RefList, This.ReferencesList, Tbl, , , True) Then
+    If Table.TryCopyDictionaryToTable(RefList, This.ReferencesList, This.ReferencesTable, , , True) Then
     Else
         ReportError "Error loading References List", "Routine", RoutineName
+        GoTo Done
+    End If
+    Dim ModuleList As VBAModuleList_Table
+    Set ModuleList = New VBAModuleList_Table
+    
+    If Table.TryCopyDictionaryToTable(ModuleList, This.ModuleList, This.ModuleTable, , , True) Then
+    Else
+        ReportError "Error copying Module List to table", "Routine", RoutineName
         GoTo Done
     End If
     ' Tables have been updated
@@ -111,7 +122,7 @@ Done:
 ErrorHandler:
     DisplayError RoutineName
     CloseErrorFile
-End Sub                                          ' MakeConfigFile
+End Sub ' MakeConfigFile
 
 Public Sub Export()
 
@@ -128,38 +139,42 @@ Public Sub Export()
     
     PopulateTables "Export which project?"
     
+    If This.FormCanceled Then Exit Sub
+    
     EnsurePath This.Path
     
     '// Export all modules listed in the configuration
-    Dim varModuleName As Variant
+    Dim ModuleName As Variant
+    Dim ComponentModule As VBComponent
     
-    For Each varModuleName In This.ModuleList
+    For Each ModuleName In This.ModuleList
         ' TODO Provide a warning if module listed in configuration is not found
-        If CheckNameInCollection(varModuleName, This.Project.VBComponents) Then
-            Dim comModule As VBComponent
-            Set comModule = This.Project.VBComponents(varModuleName)
+        If CheckNameInCollection(ModuleName, This.Project.VBComponents) Then
+            Set ComponentModule = This.Project.VBComponents(ModuleName)
             
             Dim Dest As String
-            Dest = This.Path & Application.PathSeparator & varModuleName & FileExtension(comModule)
-            comModule.Export Dest
+            Dest = This.Path & Application.PathSeparator & ModuleName & FileExtension(ComponentModule)
+            ComponentModule.Export Dest
 
             If This.FormDeleted Then
-                If comModule.Type = vbext_ct_Document Then
-                    comModule.CodeModule.DeleteLines 1, comModule.CodeModule.CountOfLines
+                If ComponentModule.Type = vbext_ct_Document Then
+                    ComponentModule.CodeModule.DeleteLines 1, ComponentModule.CodeModule.CountOfLines
                 Else
-                    This.Project.VBComponents.Remove comModule
+                    This.Project.VBComponents.Remove ComponentModule
                 End If
             End If
         End If
-    Next varModuleName
+    Next ModuleName
 
     '// Remove all references listed
-    If This.FormDeleted Then
-        For Each varModuleName In This.ModuleList
-            If CheckNameInCollection(varModuleName, This.Project.References) Then
-                This.Project.References.Remove This.Project.References(varModuleName)
-            End If
-        Next varModuleName
+    If Not This.CopyCommonModules Then
+        If This.FormDeleted Then
+            For Each ModuleName In This.ModuleList
+                If CheckNameInCollection(ModuleName, This.Project.References) Then
+                    This.Project.References.Remove This.Project.References(ModuleName)
+                End If
+            Next ModuleName
+        End If
     End If
 
     MsgBox "All modules successfully exported", _
@@ -196,42 +211,45 @@ Public Sub Import()
     
     PopulateTables "Import which project?"
     
+    If This.FormCanceled Then Exit Sub
+    
     If This.Project.Name = "Personal" Then
-        MsgBox "Can not import PERSONAL.xlsb because " & _
-               "the import code is in PERSONAL.xlsb", _
+        MsgBox "Can not import into PERSONAL.xlsb", _
                vbOKOnly Or vbCritical, _
                "Can Not Import PERSONAL.xlsb"
         Exit Sub
     End If
 
     '// Import code from listed module files
-    Dim varModuleName As Variant
-    Dim comModule As VBComponent
+    Dim ModuleName As Variant
+    Dim ComponentModule As VBComponent
     
-    For Each varModuleName In This.ModuleList
-        Set comModule = This.Project.VBComponents(varModuleName)
+    For Each ModuleName In This.ModuleList
+        Set ComponentModule = This.Project.VBComponents(ModuleName)
         ImportModule _
             This.Project, _
-            varModuleName, _
+            ModuleName, _
             This.Path & Application.PathSeparator & _
-                This.ModuleList(varModuleName).Module & "." & This.ModuleList(varModuleName).Extension
+                This.ModuleList(ModuleName).Module & "." & This.ModuleList(ModuleName).Extension
             
-    Next varModuleName
+    Next ModuleName
 
     '// Add references listed in the config file
     Dim Entry As Variant
     Dim Ref As VBAReferences_Table
     
-    For Each Entry In This.ReferencesList
-        Set Ref = This.ReferencesList(Entry)
-        
-        If Not CheckNameInCollection(Ref.Name, This.Project.References) Then
-            This.Project.References.AddFromGuid _
-                GUID:=Ref.GUID, _
-                Major:=Ref.Major, _
-                Minor:=Ref.Minor
-        End If
-    Next Entry
+    If Not This.CopyCommonModules Then
+        For Each Entry In This.ReferencesList
+            Set Ref = This.ReferencesList(Entry)
+            
+            If Not CheckNameInCollection(Ref.Name, This.Project.References) Then
+                This.Project.References.AddFromGuid _
+                    GUID:=Ref.GUID, _
+                    Major:=Ref.Major, _
+                    Minor:=Ref.Minor
+            End If
+        Next Entry
+    End If
     
     MsgBox "All modules successfully imported", _
            vbOKOnly Or vbInformation, _
@@ -268,14 +286,14 @@ Private Sub GetProject( _
         GitForm.ProjectList.Text = GitForm.ProjectList.List(0)
     End If
     
-    GitForm.Caption = "Select the VBA Project to " & TitleText
+    GitForm.Caption = TitleText
     GitForm.Show
     
     Dim SelectedProject As VBProject
     
     If This.FormCanceled Then
         ' Either Cancel button or dialog close button (red X) selected
-        MsgBox TitleText & " canceled by user", _
+        MsgBox TitleText & " Canceled by User", _
                vbOKOnly Or vbInformation, _
                "Cancel Selected"
         Set SelectedProject = Nothing
@@ -316,33 +334,33 @@ Private Sub GetModules()
     Const RoutineName As String = Module_Name & "GetModules"
     On Error GoTo ErrorHandler
     
-    Dim collAddList As Collection
-    Set collAddList = New Collection
+    Dim AddList As Collection
+    Set AddList = New Collection
     
-    Dim strAddListStr As String
-    strAddListStr = vbNullString
+    Dim AddListStr As String
+    AddListStr = vbNullString
     
-    Dim comModule As VBComponent
-    Dim boolCreateNewEntry  As Boolean
+    Dim ComponentModule As VBComponent
+    Dim CreateNewEntry  As Boolean
     
-    For Each comModule In This.Project.VBComponents
-        boolCreateNewEntry = _
-                           ExportableModule(comModule) And _
-                           Not This.ModuleList.Exists(comModule.Name)
+    For Each ComponentModule In This.Project.VBComponents
+        CreateNewEntry = _
+                           ExportableModule(ComponentModule) And _
+                           Not This.ModuleList.Exists(ComponentModule.Name)
 
-        If boolCreateNewEntry Then
-            collAddList.Add comModule.Name
-            strAddListStr = strAddListStr & comModule.Name & vbNewLine
+        If CreateNewEntry Then
+            AddList.Add ComponentModule.Name
+            AddListStr = AddListStr & ComponentModule.Name & vbNewLine
         End If
-    Next comModule
+    Next ComponentModule
 
     ' Ask the user if they want to add new modules to the config file
-    Dim intUserResponse As Long
+    Dim UserResponse As Long
     Dim NewMod As VBAModuleList_Table
-    Dim varModuleName As Variant
+    Dim ModuleName As Variant
     
-    If collAddList.Count > 0 Then
-        intUserResponse = MsgBox( _
+    If AddList.Count > 0 Then
+        UserResponse = MsgBox( _
                           Prompt:= _
                           "There are some modules not listed in the configuration file which " & _
                           "exist in the current project. Would you like to " & _
@@ -351,53 +369,53 @@ Private Sub GetModules()
                           "Note: All modules are listed if there is no existing configuration file" & _
                           vbNewLine & _
                           "New modules:" & vbNewLine & _
-                          strAddListStr, _
+                          AddListStr, _
                           Buttons:=vbYesNo + vbDefaultButton2, _
                           Title:="New Modules")
 
-        If intUserResponse = vbYes Then
-            For Each varModuleName In collAddList
+        If UserResponse = vbYes Then
+            For Each ModuleName In AddList
                 Set NewMod = New VBAModuleList_Table
-                If This.ModuleList.Exists(varModuleName) Then
-                    ReportWarning "Duplicate module name", "Routine", RoutineName, "Module Name", varModuleName
+                If This.ModuleList.Exists(ModuleName) Then
+                    ReportWarning "Duplicate module name", "Routine", RoutineName, "Module Name", ModuleName
                 Else
-                    NewMod.Module = varModuleName
-                    NewMod.Extension = FileExtension(This.Project.VBComponents(varModuleName))
-                    This.ModuleList.Add varModuleName, NewMod
+                    NewMod.Module = ModuleName
+                    NewMod.Extension = FileExtension(This.Project.VBComponents(ModuleName))
+                    This.ModuleList.Add ModuleName, NewMod
                 End If
-            Next varModuleName
+            Next ModuleName
         End If
     End If
     
     '// Ask user if they want to delete entries for missing modules
     ' Create the list of modules to potentially delete
-    Dim collDeleteList As Collection
-    Set collDeleteList = New Collection
+    Dim DeleteList As Collection
+    Set DeleteList = New Collection
 
-    Dim strDeleteListStr As String
-    strDeleteListStr = vbNullString
+    Dim DeleteListStr As String
+    DeleteListStr = vbNullString
 
-    Dim boolDeleteModule As Boolean
+    Dim DeleteModule As Boolean
     
-    For Each varModuleName In This.ModuleList
-        boolDeleteModule = True
+    For Each ModuleName In This.ModuleList
+        DeleteModule = True
 
-        If CheckNameInCollection(varModuleName, This.Project.VBComponents) Then
-            If ExportableModule(This.Project.VBComponents(varModuleName)) Then
-                boolDeleteModule = False
+        If CheckNameInCollection(ModuleName, This.Project.VBComponents) Then
+            If ExportableModule(This.Project.VBComponents(ModuleName)) Then
+                DeleteModule = False
             End If
         End If
 
-        If boolDeleteModule Then
-            collDeleteList.Add varModuleName
-            strDeleteListStr = strDeleteListStr & varModuleName & vbNewLine
+        If DeleteModule Then
+            DeleteList.Add ModuleName
+            DeleteListStr = DeleteListStr & ModuleName & vbNewLine
         End If
-    Next varModuleName
+    Next ModuleName
     ' Now have a list of modules to potentially delete
 
     ' Ask the user if they want to delete any modules
-    If collDeleteList.Count > 0 Then
-        intUserResponse = MsgBox( _
+    If DeleteList.Count > 0 Then
+        UserResponse = MsgBox( _
                           Prompt:= _
                           "There are some modules listed in the configuration file which " & _
                           "haven't been found in the current project. Would you like to " & _
@@ -405,14 +423,14 @@ Private Sub GetModules()
                           vbNewLine & _
                           vbNewLine & _
                           "Missing modules:" & vbNewLine & _
-                          strDeleteListStr, _
+                          DeleteListStr, _
                           Buttons:=vbYesNo + vbDefaultButton2, _
                           Title:="Missing Modules")
 
-        If intUserResponse = vbYes Then
-            For Each varModuleName In collDeleteList
-                This.ModuleList.Remove varModuleName
-            Next varModuleName
+        If UserResponse = vbYes Then
+            For Each ModuleName In DeleteList
+                This.ModuleList.Remove ModuleName
+            Next ModuleName
         End If
     End If
     
@@ -432,18 +450,20 @@ Private Function GetConfigDirectory(ByVal InitialDirectory As String) As String
     Const RoutineName As String = Module_Name & "GetConfigDirectory"
     On Error GoTo ErrorHandler
     
+    Dim Response As Long
+    
     With Application.FileDialog(msoFileDialogFolderPicker)
         .AllowMultiSelect = False
         .Title = "Choose Configuration File Directory"
         .InitialFileName = InitialDirectory
-        Dim Response As Long
+        
         Response = .Show
+        
         If Response <> 0 Then
             GetConfigDirectory = .SelectedItems(1)
         Else
             GetConfigDirectory = "No directory selected"
         End If
-            
     End With
     
     '@Ignore LineLabelNotUsed
@@ -464,18 +484,20 @@ Private Function GetUserBasePath(ByVal InitialDirectory As String) As String
     Const RoutineName As String = Module_Name & "GetUserBasePath"
     On Error GoTo ErrorHandler
     
+    Dim Response As Long
+    
     With Application.FileDialog(msoFileDialogFolderPicker)
         .AllowMultiSelect = False
         .Title = "Choose Base Path Directory"
         .InitialFileName = InitialDirectory
-        Dim Response As Long
+        
         Response = .Show
+        
         If Response <> 0 Then
             GetUserBasePath = .SelectedItems(1)
         Else
             GetUserBasePath = "No base path selected"
         End If
-            
     End With
     
     '@Ignore LineLabelNotUsed
@@ -485,7 +507,7 @@ ErrorHandler:
     RaiseError Err.Number, Err.Source, RoutineName, Err.Description
 End Function                                     ' GetUserBasePath
 
-Private Sub GetReferences(ByVal ThisProject As VBProject)
+Private Sub GetReferences()
 
     ' This routine gathers a list of the references in this project
     ' Compares that list with the existing config file
@@ -494,28 +516,31 @@ Private Sub GetReferences(ByVal ThisProject As VBProject)
     Const RoutineName As String = Module_Name & "GetReferences"
     On Error GoTo ErrorHandler
     
-    Dim collAddList As Collection
-    Set collAddList = New Collection
+    Dim AddList As Collection
+    Set AddList = New Collection
     
-    Dim strAddListStr As String
-    strAddListStr = vbNullString
+    Dim AddListStr As String
+    AddListStr = vbNullString
     
-    Dim refReference As Reference
-    For Each refReference In ThisProject.References
-        If Not refReference.BuiltIn Then
-            If ReferenceToAdd(refReference) Then
-                If Not This.ReferencesList.Exists(refReference.Name) Then
-                    collAddList.Add refReference
-                    strAddListStr = strAddListStr & refReference.Name & vbNewLine
+    Dim Ref As Variant
+    
+    For Each Ref In This.Project.References
+        If Not Ref.BuiltIn Then
+            If ReferenceToAdd(Ref) Then
+                If Not This.ReferencesList.Exists(Ref.Name) Then
+                    AddList.Add Ref
+                    AddListStr = AddListStr & Ref.Name & vbNewLine
                 End If
             End If
         End If
-    Next refReference
+    Next Ref
 
     ' Ask the user if they want to add new references to the config file
-    If collAddList.Count > 0 Then
-        Dim intUserResponse As Long
-        intUserResponse = MsgBox( _
+    Dim UserResponse As Long
+    Dim NewRef As VBAReferences_Table
+    
+    If AddList.Count > 0 Then
+        UserResponse = MsgBox( _
                           Prompt:= _
                           "There are some references not listed in the configuration file which " & _
                           "exist in the current project. Would you like to " & _
@@ -524,16 +549,14 @@ Private Sub GetReferences(ByVal ThisProject As VBProject)
                           "Note: if the configuration file doesn't already exist, this will be a list of all references" & _
                           vbNewLine & _
                           "New references:" & vbNewLine & _
-                          strAddListStr, _
+                          AddListStr, _
                           Buttons:=vbYesNo + vbDefaultButton2, _
                           Title:="New References")
 
-        If intUserResponse = vbYes Then
+        If UserResponse = vbYes Then
             Dim I As Long
             I = 1
-            Dim Ref As Variant
-            Dim NewRef As VBAReferences_Table
-            For Each Ref In collAddList
+            For Each Ref In AddList
                 If This.ReferencesList.Exists(Ref.Name) Then
                     ReportWarning "Duplicate reference name", "Routine", RoutineName, "Reference Name", Ref
                 Else
@@ -559,7 +582,7 @@ Private Sub GetReferences(ByVal ThisProject As VBProject)
     strDeleteListStr = vbNullString
     
     For Each Ref In This.ReferencesList
-        If Not CheckNameInCollection(Ref, ThisProject.References) Then
+        If Not CheckNameInCollection(Ref, This.Project.References) Then
             collDeleteList.Add Ref
             strDeleteListStr = strDeleteListStr & Ref & vbNewLine
         End If
@@ -567,7 +590,7 @@ Private Sub GetReferences(ByVal ThisProject As VBProject)
 
     ' Ask the user if they want to delete any references
     If collDeleteList.Count > 0 Then
-        intUserResponse = MsgBox( _
+        UserResponse = MsgBox( _
                           Prompt:="There are some references listed in the configuration file which " & _
                                    "haven't been found in the current project. Would you like to " & _
                                    "remove these references from the configuration file?" & vbNewLine & _
@@ -577,7 +600,7 @@ Private Sub GetReferences(ByVal ThisProject As VBProject)
                           Buttons:=vbYesNo + vbDefaultButton2, _
                           Title:="Missing References")
 
-        If intUserResponse = vbYes Then
+        If UserResponse = vbYes Then
             For Each Ref In collDeleteList
                 This.ReferencesList.Remove Ref
             Next Ref
@@ -610,7 +633,7 @@ Private Function ReferenceToAdd(ByVal ThisRef As Reference) As Boolean
     ErrorNumber = Err.Number
     On Error GoTo 0
     If ErrorNumber <> 0 Then
-        ReferenceToAdd = False                   ' Bad reference; skip
+        ReferenceToAdd = False ' Bad reference; skip
         Exit Function
     End If
     
@@ -636,15 +659,13 @@ Private Sub ImportModule( _
         ByVal ThisProject As VBProject, _
         ByVal ModuleName As String, _
         ByVal ModulePath As String)
-    '// Import a VBA code module... how hard could it be right?
-    ' Version 1.0.1
-    ' Put this routine into normal form
+        
+    '// Import a VBA code module
     
     Const RoutineName As String = Module_Name & "ImportModule"
     On Error GoTo ErrorHandler
     
     Dim ErrorNumber As Long
-    Dim comNewImport As VBComponent
     
     Dim NameToCheck As String
     On Error Resume Next
@@ -664,43 +685,42 @@ Private Sub ImportModule( _
     
     On Error Resume Next
     
-    Set comNewImport = ThisProject.VBComponents.Import(ModulePath)
+    Dim ComponentModule As VBComponent
+    Set ComponentModule = ThisProject.VBComponents.Import(ModulePath)
+    
     ErrorNumber = Err.Number
     If ErrorNumber = 60061 Then Exit Sub         ' Module already in use
     If ErrorNumber = 53 Then Exit Sub         ' Module does not exist
     On Error GoTo 0
     
-    If comNewImport.Name <> ModuleName Then
+    Dim NewComponent As VBComponent
+    Dim ExistingComponent As VBComponent
+    Dim CodeMod As CodeModule
+    Dim CodePasteMod As CodeModule
+    
+    If ComponentModule.Name <> ModuleName Then
         If CheckNameInCollection(ModuleName, ThisProject.VBComponents) Then
-
-            Dim comExistingComp As VBComponent
-            Set comExistingComp = ThisProject.VBComponents(ModuleName)
-            If comExistingComp.Type = vbext_ct_Document Then
-
-                Dim modCodeCopy As CodeModule
-                Set modCodeCopy = comNewImport.CodeModule
+            Set ExistingComponent = ThisProject.VBComponents(ModuleName)
+            If ExistingComponent.Type = vbext_ct_Document Then
                 
-                Dim modCodePaste As CodeModule
-                Set modCodePaste = comExistingComp.CodeModule
+                Set CodePasteMod = ExistingComponent.CodeModule
+                CodePasteMod.DeleteLines 1, CodePasteMod.CountOfLines
                 
-                modCodePaste.DeleteLines 1, modCodePaste.CountOfLines
+                Set CodeMod = NewComponent.CodeModule
                 
-                If modCodeCopy.CountOfLines > 0 Then
-                    modCodePaste.AddFromString modCodeCopy.lines(1, modCodeCopy.CountOfLines)
+                If CodeMod.CountOfLines > 0 Then
+                    CodePasteMod.AddFromString CodeMod.Lines(1, CodeMod.CountOfLines)
                 End If
                 
-                ThisProject.VBComponents.Remove comNewImport
-
+                ThisProject.VBComponents.Remove NewComponent
             Else
-                comExistingComp.Name = comExistingComp.Name & "_remove"
-                ThisProject.VBComponents.Remove comExistingComp
-                comNewImport.Name = ModuleName   ' TODO fails on work computer
-                ThisProject.VBComponents.Remove comExistingComp
+                ExistingComponent.Name = ExistingComponent.Name & "_remove"
+                ThisProject.VBComponents.Remove ExistingComponent
+                NewComponent.Name = ModuleName   ' TODO fails on work computer
+                ThisProject.VBComponents.Remove ExistingComponent
             End If
         Else
-
-            comNewImport.Name = ModuleName
-
+            NewComponent.Name = ModuleName
         End If
     End If
     
@@ -711,7 +731,7 @@ ErrorHandler:
     RaiseError Err.Number, Err.Source, RoutineName, Err.Description
 End Sub                                          ' ImportModule
 
-Private Function ExportableModule(ByVal comModule As VBComponent) As Boolean
+Private Function ExportableModule(ByVal ComponentModule As VBComponent) As Boolean
     '// Is the given module exportable by this tool?
     ' Version 1.0.1
     ' Put this routine into normal form
@@ -720,9 +740,7 @@ Private Function ExportableModule(ByVal comModule As VBComponent) As Boolean
     On Error GoTo ErrorHandler
     
     ExportableModule = _
-                     (Not ModuleEmpty(comModule)) _
-                     And _
-                     (FileExtension(comModule) <> vbNullString)
+        (Not ModuleEmpty(ComponentModule)) And (Not FileExtension(ComponentModule) = vbNullString)
     
     '@Ignore LineLabelNotUsed
 Done:
@@ -731,7 +749,7 @@ ErrorHandler:
     RaiseError Err.Number, Err.Source, RoutineName, Err.Description
 End Function                                     ' ExportableModule
 
-Private Function ModuleEmpty(ByVal comModule As VBComponent) As Boolean
+Private Function ModuleEmpty(ByVal ThisModule As VBComponent) As Boolean
     '// Check if a code module is effectively empty.
     '// effectively empty should be functionally and semantically equivalent to
     '// actually empty.
@@ -743,19 +761,20 @@ Private Function ModuleEmpty(ByVal comModule As VBComponent) As Boolean
     
     ModuleEmpty = True
 
-    Dim lngNumLines As Long
-    lngNumLines = comModule.CodeModule.CountOfLines
+    Dim NumLines As Long
+    NumLines = ThisModule.CodeModule.CountOfLines
     
-    Dim lngCurLine As Long
-    For lngCurLine = 1 To lngNumLines
-        Dim strCurLine As String
-        strCurLine = comModule.CodeModule.lines(lngCurLine, 1)
+    Dim LineNumber As Long
+    Dim CurrentLine As String
+    
+    For LineNumber = 1 To NumLines
+        CurrentLine = ThisModule.CodeModule.Lines(LineNumber, 1)
         
-        If Not (strCurLine = "Option Explicit" Or strCurLine = vbNullString) Then
+        If Not (CurrentLine = "Option Explicit" Or CurrentLine = vbNullString) Then
             ModuleEmpty = False
             Exit Function
         End If
-    Next lngCurLine
+    Next LineNumber
     
     '@Ignore LineLabelNotUsed
 Done:
@@ -764,7 +783,7 @@ ErrorHandler:
     RaiseError Err.Number, Err.Source, RoutineName, Err.Description
 End Function                                     ' ModuleEmpty
 
-Private Function FileExtension(ByVal comModule As VBComponent) As String
+Private Function FileExtension(ByVal ThisModule As VBComponent) As String
     '// The appropriate file extension for exporting the given module
     ' Version 1.0.1
     ' Put this routine into normal form
@@ -772,7 +791,7 @@ Private Function FileExtension(ByVal comModule As VBComponent) As String
     Const RoutineName As String = Module_Name & "FileExtension"
     On Error GoTo ErrorHandler
     
-    Select Case comModule.Type
+    Select Case ThisModule.Type
     Case vbext_ct_StdModule
         FileExtension = ".bas"
     Case vbext_ct_ClassModule, vbext_ct_Document
@@ -792,27 +811,24 @@ End Function                                     ' FileExtension
 
 Private Sub EnsurePath(ByVal Path As String)
     '// Ensure path to a file exists. Creates missing folders.
-    ' Version 1.0
-    ' Added error handling
-    ' Version 1.0.1
-    ' Put this routine into normal form
     
     Const RoutineName As String = Module_Name & "EnsurePath"
     On Error GoTo ErrorHandler
     
-    Set FSO = New Scripting.FileSystemObject
+    Dim FSO As FileSystemObject
+    Set FSO = New FileSystemObject
     
-    Dim strParentPath As String
-    strParentPath = FSO.GetParentFolderName(Path)
+    Dim ParentPath As String
+    ParentPath = FSO.GetParentFolderName(Path)
 
-    If strParentPath <> vbNullString Then
-        EnsurePath strParentPath
-        If Not FSO.FolderExists(strParentPath) Then
-            If FSO.FileExists(strParentPath) Then
+    If ParentPath <> vbNullString Then
+        EnsurePath ParentPath
+        If Not FSO.FolderExists(ParentPath) Then
+            If FSO.FileExists(ParentPath) Then
                 ReportError "No path exists", _
-                            "Path", strParentPath
+                            "Path", ParentPath
             Else
-                FSO.CreateFolder (strParentPath)
+                FSO.CreateFolder (ParentPath)
             End If
         End If
     End If
@@ -822,25 +838,15 @@ Done:
     Exit Sub
 ErrorHandler:
     RaiseError Err.Number, Err.Source, RoutineName, Err.Description
-End Sub                                          ' EnsurePath
+End Sub ' EnsurePath
 
 Public Sub LetGitFormCanceled(ByVal Canx As Boolean)
     This.FormCanceled = Canx
-End Sub                                          ' LetGitFormCanceled
+End Sub ' LetGitFormCanceled
 
-Public Sub LetGitFormDelete(ByVal DeleteCheck As Boolean)
-    If DeleteCheck Then
-        Select Case MsgBox( _
-               "Are you sure you want to delete all the code in this project when you export?", _
-               vbYesNo Or vbExclamation, _
-               "Delete All Code?")
-        Case vbYes
-            This.FormDeleted = True
-        Case vbNo
-            This.FormDeleted = False
-        End Select
-    End If
-End Sub                                          ' LetGitFormDelete
+Public Sub CopyCommonModules(ByVal CopyCommon As Boolean)
+    This.CopyCommonModules = CopyCommon
+End Sub
 
 Private Sub PopulateTables(ByVal Title As String)
 
@@ -851,48 +857,86 @@ Private Sub PopulateTables(ByVal Title As String)
     
     GetProject Title, This.Project, This.Workbook
     
-    Set This.Worksheet = This.Workbook.Worksheets(VBAMakeFile)
+    If This.FormCanceled Then Exit Sub
     
     Dim ModuleList As VBAModuleList_Table
-    Set ModuleList = New VBAModuleList_Table
-    
-    Set This.ModuleTable = This.Worksheet.ListObjects(VBAModuleList)
-    
-    If Table.TryCopyTableToDictionary( _
-        ModuleList, This.ModuleList, This.ModuleTable, False) _
-    Then
-    Else
-        ReportError "Error loading Module List", "Routine", RoutineName
-        GoTo Done
-    End If
-    
     Dim SourceFolder As VBASourceFolder_Table
-    Set SourceFolder = New VBASourceFolder_Table
-    
-    Set This.PathTable = This.Worksheet.ListObjects(VBASourceFolder)
-       
-    If Table.TryCopyTableToDictionary( _
-        SourceFolder, This.PathFolder, This.PathTable, False) _
-    Then
-        This.Path = This.PathFolder.Items(0).Path
-    Else
-        ReportError "Error loading Source Path", "Routine", RoutineName
-        GoTo Done
-    End If
-    
     Dim RefList As VBAReferences_Table
-    Set RefList = New VBAReferences_Table
+    Dim ErrorNumber As Long
     
-    Set This.ReferencesTable = This.Worksheet.ListObjects(VBAReferences)
-    
-    If Table.TryCopyTableToDictionary( _
-        RefList, This.ReferencesList, This.ReferencesTable, False) _
-    Then
-    Else
-        ReportError "Error loading References List", "Routine", RoutineName
-        GoTo Done
-    End If
-    
+    If This.CopyCommonModules Then
+        On Error Resume Next
+        Set This.Worksheet = This.Workbook.Worksheets(VBACommonFile)
+        ErrorNumber = Err.Number
+        If ErrorNumber <> 0 Then
+            GoTo Done
+        End If
+        On Error GoTo ErrorHandler
+        
+        Set ModuleList = New VBAModuleList_Table
+        
+        Set This.ModuleTable = This.Worksheet.ListObjects(VBACommonModuleList)
+        
+        If Table.TryCopyTableToDictionary( _
+            ModuleList, This.ModuleList, This.ModuleTable, False) _
+        Then
+        Else
+            ReportError "Error loading Module List", "Routine", RoutineName
+            GoTo Done
+        End If
+        
+        Set SourceFolder = New VBASourceFolder_Table
+        
+        Set This.PathTable = This.Worksheet.ListObjects(VBACommonSourceFolder)
+           
+        If Table.TryCopyTableToDictionary( _
+            SourceFolder, This.PathFolder, This.PathTable, False) _
+        Then
+            This.Path = This.PathFolder.Items(0).Path
+        Else
+            ReportError "Error loading Source Path", "Routine", RoutineName
+            GoTo Done
+        End If
+    Else ' This.CopyCommonModules
+        Set This.Worksheet = This.Workbook.Worksheets(VBAMakeFile)
+        
+        Set ModuleList = New VBAModuleList_Table
+        
+        Set This.ModuleTable = This.Worksheet.ListObjects(VBAModuleList)
+        
+        If Table.TryCopyTableToDictionary( _
+            ModuleList, This.ModuleList, This.ModuleTable, False) _
+        Then
+        Else
+            ReportError "Error loading Module List", "Routine", RoutineName
+            GoTo Done
+        End If
+        
+        Set SourceFolder = New VBASourceFolder_Table
+        
+        Set This.PathTable = This.Worksheet.ListObjects(VBASourceFolder)
+           
+        If Table.TryCopyTableToDictionary( _
+            SourceFolder, This.PathFolder, This.PathTable, False) _
+        Then
+            This.Path = This.PathFolder.Items(0).Path
+        Else
+            ReportError "Error loading Source Path", "Routine", RoutineName
+            GoTo Done
+        End If
+        
+        Set RefList = New VBAReferences_Table
+        
+        Set This.ReferencesTable = This.Worksheet.ListObjects(VBAReferences)
+        
+        If Table.TryCopyTableToDictionary( _
+            RefList, This.ReferencesList, This.ReferencesTable, False) _
+        Then
+        Else
+            ReportError "Error loading References List", "Routine", RoutineName
+            GoTo Done
+        End If
+    End If ' This.CopyCommonModules
 Done:
     Exit Sub
 ErrorHandler:
