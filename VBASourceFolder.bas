@@ -1,7 +1,7 @@
 Attribute VB_Name = "VBASourceFolder"
 Option Explicit
 
-' Built on 5/23/2020 2:32:55 PM
+' Built on 6/15/2020 10:41:18 AM
 ' Built By Briargate Excel Table Builder
 ' See BriargateExcel.com for details
 
@@ -18,7 +18,7 @@ Private This As PrivateType
 ' No application specific declarations found
 
 Private Const pPathColumn As Long = 1
-Private Const pExtraColumn As Long = 2
+Private Const pPathNameColumn As Long = 2
 Private Const pHeaderWidth As Long = 2
 
 Private Const pFileName As String = "Blank"
@@ -29,14 +29,14 @@ Public Property Get PathColumn() As Long
     PathColumn = pPathColumn
 End Property ' PathColumn
 
-Public Property Get ExtraColumn() As Long
-    ExtraColumn = pExtraColumn
-End Property ' ExtraColumn
+Public Property Get PathNameColumn() As Long
+    PathNameColumn = pPathNameColumn
+End Property ' PathNameColumn
 
 Public Property Get Headers() As Variant
     Headers = Array( _
         "Path", _
-        "Extra")
+        "Path Name")
 End Property ' Headers
 
 Public Property Get Dict() As Dictionary
@@ -90,12 +90,39 @@ Public Property Get HeaderWidth() As Long
     HeaderWidth = pHeaderWidth
 End Property ' HeaderWidth
 
+Public Property Get GetPathFromPathName(ByVal PathName As String) As String
+
+    Const RoutineName As String = Module_Name & "GetPathFromPathName"
+    On Error GoTo ErrorHandler
+
+    If Not This.Initialized Then VBASourceFolder.Initialize
+
+    If CheckPathNameExists(PathName) Then
+        GetPathFromPathName = This.Dict(PathName).Path
+    Else
+        ReportError "Unrecognized PathName", _
+            "Routine", RoutineName, _
+            "Path Name", PathName
+    End If
+
+Done:
+    Exit Property
+ErrorHandler:
+    ReportError "Exception raised", _
+                "Routine", RoutineName, _
+                "Error Number", Err.Number, _
+                "Error Description", Err.Description ' _
+                "Path Name", PathName
+
+    RaiseError Err.Number, Err.Source, RoutineName, Err.Description
+End Property ' GetPathFromPathName
+
 Public Function CreateKey(ByVal Record As VBASourceFolder_Table) As String
 
     Const RoutineName As String = Module_Name & "CreateKey"
     On Error GoTo ErrorHandler
 
-    CreateKey = Record.Path
+    CreateKey = Record.PathName
 
 Done:
     Exit Function
@@ -135,7 +162,7 @@ Public Function TryCopyDictionaryToArray( _
         Set Record = Dict.Item(Entry)
 
         Ary(I, pPathColumn) = Record.Path
-        Ary(I, pExtraColumn) = Record.Extra
+        Ary(I, pPathNameColumn) = Record.PathName
 
         I = I + 1
     Next Entry
@@ -173,7 +200,7 @@ Public Function TryCopyArrayToDictionary( _
             Set Record = New VBASourceFolder_Table
 
             Record.Path = Ary(I, pPathColumn)
-            Record.Extra = Ary(I, pExtraColumn)
+            Record.PathName = Ary(I, pPathNameColumn)
 
             Key = VBASourceFolder.CreateKey(Record)
 
@@ -200,6 +227,32 @@ ErrorHandler:
 
     RaiseError Err.Number, Err.Source, RoutineName, Err.Description
 End Function ' VBASourceFolderTryCopyArrayToDictionary
+
+Public Function CheckPathNameExists(ByVal PathName As String) As Boolean _
+
+    Const RoutineName As String = Module_Name & "CheckPathNameExists"
+    On Error GoTo ErrorHandler
+
+    If Not This.Initialized Then VBASourceFolder.Initialize
+
+    If PathName = vbNullString Then
+        CheckPathNameExists = True
+        GoTo Done
+    End If
+
+    CheckPathNameExists = This.Dict.Exists(PathName)
+
+Done:
+    Exit Function
+ErrorHandler:
+    ReportError "Exception raised", _
+                "Routine", RoutineName, _
+                "Error Number", Err.Number, _
+                "Error Description", Err.Description ' _
+                "Path Name", PathName
+
+    RaiseError Err.Number, Err.Source, RoutineName, Err.Description
+End Function ' CheckPathNameExists
 
 Public Sub FormatArrayAndWorksheet( _
     ByRef Ary As Variant, _

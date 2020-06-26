@@ -10,13 +10,13 @@ Attribute VB_Exposed = False
 Option Explicit
 Implements iTable
 
-' Built on 5/23/2020 2:32:55 PM
+' Built on 6/15/2020 10:39:25 AM
 ' Built By Briargate Excel Table Builder
 ' See BriargateExcel.com for details
 
 Private Type PrivateType
     Path As String
-    Extra As String
+    PathName As String
 End Type ' PrivateType
 
 Private This As PrivateType
@@ -31,13 +31,13 @@ Public Property Let Path(ByVal Param As String)
     This.Path = Param
 End Property ' Path
 
-Public Property Get Extra() As String
-    Extra = This.Extra
-End Property ' Extra
+Public Property Get PathName() As String
+    PathName = This.PathName
+End Property ' PathName
 
-Public Property Let Extra(ByVal Param As String)
-    This.Extra = Param
-End Property ' Extra
+Public Property Let PathName(ByVal Param As String)
+    This.PathName = Param
+End Property ' PathName
 
 Public Property Get iTable_LocalDictionary() As Dictionary
     Set iTable_LocalDictionary = VBASourceFolder.Dict

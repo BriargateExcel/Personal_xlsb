@@ -1,7 +1,7 @@
 Attribute VB_Name = "VBAModuleList"
 Option Explicit
 
-' Built on 5/23/2020 2:39:02 PM
+' Built on 6/16/2020 3:05:06 PM
 ' Built By Briargate Excel Table Builder
 ' See BriargateExcel.com for details
 
@@ -18,25 +18,25 @@ Private This As PrivateType
 ' No application specific declarations found
 
 Private Const pModuleColumn As Long = 1
-Private Const pExtensionColumn As Long = 2
+Private Const pPathsColumn As Long = 2
 Private Const pHeaderWidth As Long = 2
 
-Private Const pFileName As String = "Blank"
-Private Const pWorksheetName As String = vbNullString
-Private Const pExternalTableName As String = vbNullString
+Private Const pFileName As String = "ThisWorkbook"
+Private Const pWorksheetName As String = "VBA Make File"
+Private Const pExternalTableName As String = "VBAModuleList"
 
 Public Property Get ModuleColumn() As Long
     ModuleColumn = pModuleColumn
 End Property ' ModuleColumn
 
-Public Property Get ExtensionColumn() As Long
-    ExtensionColumn = pExtensionColumn
-End Property ' ExtensionColumn
+Public Property Get PathsColumn() As Long
+    PathsColumn = pPathsColumn
+End Property ' PathsColumn
 
 Public Property Get Headers() As Variant
     Headers = Array( _
         "Module", _
-        "Extension")
+        "Paths")
 End Property ' Headers
 
 Public Property Get Dict() As Dictionary
@@ -44,8 +44,8 @@ Public Property Get Dict() As Dictionary
 End Property ' Dict
 
 Public Property Get SpecificTable() As ListObject
-    ' This table is handled in other ways
-    Set SpecificTable = Nothing
+    ' This table is in this workbook
+    Set SpecificTable = ThisWorkbook.Worksheets("VBA Make File").ListObjects("VBAModuleList")
 End Property ' SpecificTable
 
 Public Property Get Initialized() As Boolean
@@ -135,7 +135,7 @@ Public Function TryCopyDictionaryToArray( _
         Set Record = Dict.Item(Entry)
 
         Ary(I, pModuleColumn) = Record.Module
-        Ary(I, pExtensionColumn) = Record.Extension
+        Ary(I, pPathsColumn) = Record.Paths
 
         I = I + 1
     Next Entry
@@ -173,7 +173,7 @@ Public Function TryCopyArrayToDictionary( _
             Set Record = New VBAModuleList_Table
 
             Record.Module = Ary(I, pModuleColumn)
-            Record.Extension = Ary(I, pExtensionColumn)
+            Record.Paths = Ary(I, pPathsColumn)
 
             Key = VBAModuleList.CreateKey(Record)
 
@@ -207,6 +207,7 @@ Public Sub FormatArrayAndWorksheet( _
 
     Const RoutineName As String = Module_Name & "VBAModuleListFormatArrayAndWorksheet"
     On Error GoTo ErrorHandler
+
 
 
 Done:

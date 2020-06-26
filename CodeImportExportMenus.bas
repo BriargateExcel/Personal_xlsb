@@ -1,94 +1,67 @@
 Attribute VB_Name = "CodeImportExportMenus"
-'
-'
-'
-' From: https://github.com/spences10/VBA-IDE-Code-Export
-'
-'
-'
 Option Explicit
+
+Private Const Module_Name As String = "CodeIMportExportMenus."
 
 Private MnuEvt      As clsVBECmdHandler
 Private EvtHandlers As New Collection
+Private Const CommandBarName As String = "Personal Routines"
 
-Private Sub CreateXLMenu()
+Private Type CodeType
+    CustomBar As CommandBar
+End Type
+
+Private This As CodeType
+
+Public Sub Auto_Open()
 ' https://bettersolutions.com/vba/ribbon/face-ids-2003.htm for FaceIDs
+    
     Dim NewButton As CommandBarButton
     
     On Error Resume Next
-    CommandBars("Code Manager").Delete
+    CommandBars(CommandBarName).Delete
     On Error GoTo 0
     
-    Dim CustomBar As CommandBar
-    Set CustomBar = CommandBars.Add(Name:="Code Manager")
+    Set This.CustomBar = CommandBars.Add(Name:=CommandBarName)
     
-    Set NewButton = CustomBar.Controls.Add(msoControlButton)
-    NewButton.OnAction = "MakeConfigFile"
-    NewButton.Caption = "Make Config File"
-    NewButton.FaceId = 538
-    NewButton.TooltipText = "Create or overwrite an existing json file directing which components to export or import"
-        
-    Set NewButton = CustomBar.Controls.Add(msoControlButton)
-    NewButton.OnAction = "Export"
-    NewButton.Caption = "Export"
-    NewButton.FaceId = 360
-    NewButton.TooltipText = "Export the components based on the json file"
-        
-    Set NewButton = CustomBar.Controls.Add(msoControlButton)
-    NewButton.OnAction = "Import"
-    NewButton.Caption = "Import"
-    NewButton.FaceId = 359
-    NewButton.TooltipText = "Import the components in a json file overwriting all existing components of the same name"
-        
-    CustomBar.Visible = True
+    BuildButton "MakeConfigurationTables", "Make Configuration Tables", 538
+    BuildButton "Export", "Export", 7026
+    BuildButton "Import", "Import", 7027
+    BuildButton "ExposeAllSheets", "Expose All Sheets", 703
     
-End Sub ' CreateXLMenu
+    This.CustomBar.Visible = True
+    
+End Sub ' Auto_Open
 
-Private Sub RemoveVBEAndXLMenus()
+Private Sub BuildButton( _
+    ByVal RoutineToExecute As String, _
+    ByVal Caption As String, _
+    ByVal FaceID As Long)
 
+    ' Build one button on the command bar
+    
+    Const RoutineName As String = Module_Name & "BuildButton"
+    On Error GoTo ErrorHandler
+    
+    Dim NewButton As CommandBarButton
+    
+    Set NewButton = This.CustomBar.Controls.Add(msoControlButton)
+    NewButton.OnAction = RoutineToExecute
+    NewButton.Caption = Caption
+    NewButton.FaceID = FaceID
+    
+Done:
+    Exit Sub
+ErrorHandler:
+    ReportError "Exception raised", _
+                "Routine", RoutineName, _
+                "Error Number", Err.Number, _
+                "Error Description", Err.Description
+    RaiseError Err.Number, Err.Source, RoutineName, Err.Description
+End Sub ' BuildButton
+
+Public Sub Auto_Close()
     On Error Resume Next
-
-    Application.VBE.CommandBars(1).Controls("Custom").Delete
-
-    '// Clear the EvtHandlers collection if there is anything in it
-    While EvtHandlers.Count > 0
-        EvtHandlers.Remove 1
-    Wend
-
-    Set EvtHandlers = Nothing
-    Set MnuEvt = Nothing
-
-    Application.CommandBars("Worksheet Menu Bar").Controls("Code Manager").Delete
+    CommandBars(CommandBarName).Delete
     On Error GoTo 0
-
-End Sub                                          ' RemoveVBEAndXLMenus
-
-Public Sub auto_open()
-    '    CreateVBEMenu
-    CreateXLMenu
-End Sub                                          ' auto_open
-
-Public Sub auto_close()
-    RemoveVBEAndXLMenus
-End Sub                                          ' auto_close
-
-Private Sub MenuEvents(ByVal objMenuItem As Object)
-
-    Set MnuEvt = New clsVBECmdHandler
-    Set MnuEvt.EvtHandler = Application.VBE.Events.CommandBarEvents(objMenuItem)
-    EvtHandlers.Add MnuEvt
-
-End Sub                                          ' MenuEvents
-
-Public Sub btnMakeConfig_onAction(control As IRibbonControl)
-    MakeConfigFile
-End Sub                                          ' btnMakeConfig_onAction
-
-Public Sub btnExport_onAction(control As IRibbonControl)
-    Export
-End Sub                                          ' btnExport_onAction
-
-Public Sub btnImport_onAction(control As IRibbonControl)
-    Import
-End Sub                                          ' btnImport_onAction
-
+End Sub ' Auto_Close

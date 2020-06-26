@@ -10,13 +10,13 @@ Attribute VB_Exposed = False
 Option Explicit
 Implements iTable
 
-' Built on 5/23/2020 2:39:02 PM
+' Built on 6/16/2020 3:05:06 PM
 ' Built By Briargate Excel Table Builder
 ' See BriargateExcel.com for details
 
 Private Type PrivateType
     Module As String
-    Extension As String
+    Paths As String
 End Type ' PrivateType
 
 Private This As PrivateType
@@ -31,13 +31,13 @@ Public Property Let Module(ByVal Param As String)
     This.Module = Param
 End Property ' Module
 
-Public Property Get Extension() As String
-    Extension = This.Extension
-End Property ' Extension
+Public Property Get Paths() As String
+    Paths = This.Paths
+End Property ' Paths
 
-Public Property Let Extension(ByVal Param As String)
-    This.Extension = Param
-End Property ' Extension
+Public Property Let Paths(ByVal Param As String)
+    This.Paths = Param
+End Property ' Paths
 
 Public Property Get iTable_LocalDictionary() As Dictionary
     Set iTable_LocalDictionary = VBAModuleList.Dict
@@ -90,7 +90,7 @@ Public Property Get iTable_IsDatabase() As Boolean
 End Property ' IsDictionary
 
 Public Property Get iTable_DatabaseName() As String
-    iTable_DatabaseName = "Blank"
+    iTable_DatabaseName = "ThisWorkbook"
 End Property ' DatabaseName
 
 Public Property Get iTable_DatabaseTableName() As String

@@ -67,6 +67,10 @@ Option Explicit
 '   Added qq for quote marks to PrintString
 ' 2/7/20
 '   Added ExposeAllSheets
+' 5/29/2020
+'   Modified ShowProgress to varying intervals
+' 6/15/2020
+' Added EnsurePath
 
 Private Const Module_Name As String = "CommonRoutines."
 
@@ -199,6 +203,9 @@ Public Function TryGetFolderPath( _
     
     TryGetFolderPath = True
     
+    Dim FSO As FileSystemObject
+    Set FSO = New Scripting.FileSystemObject
+
     With Application.FileDialog(msoFileDialogFolderPicker)
         .InitialFileName = InitialFolder
         .Title = "Select the 3T Folder"
@@ -287,7 +294,7 @@ Public Function BuildFullTracePath( _
     ' Returns a string with the full path
 
     Dim pFileName As String
-    If Strings.Right$(FileName, 4) <> ".txt" Then
+    If Right$(FileName, 4) <> ".txt" Then
         pFileName = FileName & ".txt"
     Else
         pFileName = FileName
@@ -456,7 +463,7 @@ Public Function GetASheet( _
         Dim Previous As Boolean
         
         ' Do not delete a sheet that already has a changed codename
-        If Strings.Left$(Wkbk.Worksheets(SheetName).CodeName, 5) = "Sheet" Then
+        If Left$(Wkbk.Worksheets(SheetName).CodeName, 5) = "Sheet" Then
             Previous = Application.DisplayAlerts
             Application.DisplayAlerts = False
             Wkbk.Worksheets(SheetName).Delete
@@ -849,7 +856,6 @@ End Sub ' ResizeTable
 
 Public Sub ShowProgress( _
     ByVal Msg As String, _
-    Optional ByVal Interval As Long = 0, _
     Optional ByVal Counter As Long = 0, _
     Optional ByVal MaxValue As Long = 0)
 
@@ -858,12 +864,30 @@ Public Sub ShowProgress( _
     Const RoutineName As String = Module_Name & "ShowProgress"
     On Error GoTo ErrorHandler
     
-    If Interval = 0 Then
+    Dim Delta As Long
+    Delta = MaxValue - Counter
+    
+    Dim Intrvl As Long
+    If Delta > 100000 Then
+        Intrvl = 100000
+    ElseIf Delta < 100000 And Delta > 10000 Then
+        Intrvl = 10000
+    ElseIf Delta < 10000 And Delta > 1000 Then
+        Intrvl = 1000
+    ElseIf Delta < 1000 And Delta > 100 Then
+        Intrvl = 100
+    ElseIf Delta < 100 And Delta > 10 Then
+        Intrvl = 10
+    Else
+        Intrvl = 1
+    End If
+    
+    If Intrvl = 0 Then
         Application.StatusBar = Msg
     Else
-        If Counter Mod Interval = 0 Then
+        If Counter Mod Intrvl = 0 Then
             DoEvents
-            Application.StatusBar = Msg & ": " & Counter & "/" & MaxValue
+            Application.StatusBar = Msg & ":  " & Format$(Counter, "#,##0") & " / " & Format$(MaxValue, "#,##0")
         End If
     End If
 
@@ -909,7 +933,7 @@ Public Function TrySetTableAndRange( _
         Set ThisTable = DefaultTable
     End If
     
-    If Strings.Left$(ThisTable.Range.Address, 4) = "$A$1" Then
+    If Left$(ThisTable.Range.Address, 4) = "$A$1" Then
         Set ThisRange = ThisTable.Parent.Range("$A$2")
     Else
         ReportError "Error setting range", "Routine", RoutineName
@@ -977,4 +1001,35 @@ ErrorHandler:
                 "Text", Text
     RaiseError Err.Number, Err.Source, RoutineName, Err.Description
 End Function ' PrintString
+
+Public Sub EnsurePath(ByVal Path As String)
+    '// Ensure path to a file exists. Creates missing folders.
+    
+    Const RoutineName As String = Module_Name & "EnsurePath"
+    On Error GoTo ErrorHandler
+    
+    Dim FSO As FileSystemObject
+    Set FSO = New FileSystemObject
+    
+    Dim ParentPath As String
+    ParentPath = FSO.GetParentFolderName(Path)
+
+    If ParentPath <> vbNullString Then
+        EnsurePath ParentPath
+        If Not FSO.FolderExists(ParentPath) Then
+            If FSO.FileExists(ParentPath) Then
+                ReportError "No path exists", _
+                            "Path", ParentPath
+            Else
+                FSO.CreateFolder (ParentPath)
+            End If
+        End If
+    End If
+    
+    '@Ignore LineLabelNotUsed
+Done:
+    Exit Sub
+ErrorHandler:
+    ' Could neither find nor build path
+End Sub ' EnsurePath
 
