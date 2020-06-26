@@ -136,25 +136,23 @@ Private Sub ImportModule( _
     Dim CodeMod As CodeModule
     Dim CodePasteMod As CodeModule
     
-    If ComponentModule.Name <> ModuleName Then
-        If CheckNameInCollection(ModuleName, ThisProject.VBComponents) Then
-            Set ExistingComponent = ThisProject.VBComponents(ModuleName)
-            If ExistingComponent.Type = vbext_ct_Document Then
-                
-                Set CodePasteMod = ExistingComponent.CodeModule
-                CodePasteMod.DeleteLines 1, CodePasteMod.CountOfLines
-                
-                Set CodeMod = ComponentModule.CodeModule
-                
-                If CodeMod.CountOfLines > 0 Then
-                    CodePasteMod.AddFromString CodeMod.Lines(1, CodeMod.CountOfLines)
-                End If
-                
-                ThisProject.VBComponents.Remove ComponentModule
-            Else
-                ExistingComponent.Name = ExistingComponent.Name & "_remove"
-                ThisProject.VBComponents.Remove ExistingComponent
+    If CheckNameInCollection(ModuleName, ThisProject.VBComponents) Then
+        Set ExistingComponent = ThisProject.VBComponents(ModuleName)
+        If ExistingComponent.Type = vbext_ct_Document Then
+            
+            Set CodePasteMod = ExistingComponent.CodeModule
+            CodePasteMod.DeleteLines 1, CodePasteMod.CountOfLines
+            
+            Set CodeMod = ComponentModule.CodeModule
+            
+            If CodeMod.CountOfLines > 0 Then
+                CodePasteMod.AddFromString CodeMod.Lines(1, CodeMod.CountOfLines)
             End If
+            
+            ThisProject.VBComponents.Remove ComponentModule
+        Else
+            ExistingComponent.Name = ExistingComponent.Name & "_remove"
+            ThisProject.VBComponents.Remove ExistingComponent
         End If
     End If
     
