@@ -150,9 +150,6 @@ Private Sub ImportModule( _
             End If
             
             ThisProject.VBComponents.Remove ComponentModule
-        Else
-            ExistingComponent.Name = ExistingComponent.Name & "_remove"
-            ThisProject.VBComponents.Remove ExistingComponent
         End If
     End If
     
