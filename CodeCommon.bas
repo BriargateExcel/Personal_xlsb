@@ -1,6 +1,10 @@
 Attribute VB_Name = "CodeCommon"
 Option Explicit
-' todo: build a routine that checks all the tables for correctness and builds the table contents' data structures
+' Changes
+'   Requires references to:
+'       Microsoft Visual Basic for Applications Extensibility 5.3
+'       Microsoft Scripting Runtime
+'
 Private Const Module_Name As String = "CodeCommon."
 
 ' Concept
@@ -401,6 +405,8 @@ ErrorHandler:
 End Sub ' InitializeStep1
     
 Public Sub InitializeStep2()
+' 7/5/2020
+'   Restructured fetching of VBAModulesList
 
     ' Gather all the data from the three tables
     ' Check the data for consistency
@@ -417,16 +423,18 @@ Public Sub InitializeStep2()
     Set This.ModuleTable = Workbooks(WorkBookName).Worksheets("VBA Make File").ListObjects("VBAModuleList")
     On Error GoTo ErrorHandler
     ErrorNumber = Err.Number
-    If ErrorNumber <> 0 Or This.ModuleTable Is Nothing Or This.ModuleTable.DataBodyRange Is Nothing Then
+    If ErrorNumber <> 0 Then
+        ReportError "VBAModuleList not found", "Routine", RoutineName
+        GoTo ErrorHandler
+    End If
+    
+    Dim Module As VBAModuleList_Table
+    Set Module = New VBAModuleList_Table
+    
+    If Table.TryCopyTableToDictionary(Module, This.ModuleDict, This.ModuleTable, False) Then
     Else
-        Dim Module As VBAModuleList_Table
-        Set Module = New VBAModuleList_Table
-        
-        If Table.TryCopyTableToDictionary(Module, This.ModuleDict, This.ModuleTable, False) Then
-        Else
-            ReportError "Error Copying Modules table", "Routine", RoutineName
-            GoTo Done
-        End If
+        ReportError "Error Copying Modules table", "Routine", RoutineName
+        GoTo ErrorHandler
     End If
     ' Now we have the modules table
     

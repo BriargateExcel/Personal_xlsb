@@ -4,6 +4,8 @@ Option Explicit
 Private Const Module_Name As String = "CodeBuildTables."
 
 Public Sub MakeConfigurationTables()
+' 7/5/2020
+'   Allowed for workbooks with no additional references beyond the normal ones
     
     ' Builds the configuration tables
     
@@ -64,17 +66,23 @@ Public Sub MakeConfigurationTables()
     End If
     ' Paths table has been updated
     
-    Dim RefList As VBAReferences_Table
-    Set RefList = New VBAReferences_Table
-    If Not ReferenceDict Is Nothing Then
-        If Table.TryCopyDictionaryToTable(RefList, ReferenceDict, ReferenceTable, , , True) Then
-        Else
-            ReportError "Error loading References List", "Routine", RoutineName
-            GoTo Done
-        End If
-    Else
+    ' Update the references table
+    If ReferenceDict.Count = 0 Then
         ClearTable ReferenceTable
+    Else
+        Dim RefList As VBAReferences_Table
+        Set RefList = New VBAReferences_Table
+        If Not ReferenceDict Is Nothing Then
+            If Table.TryCopyDictionaryToTable(RefList, ReferenceDict, ReferenceTable, , , True) Then
+            Else
+                ReportError "Error loading References List", "Routine", RoutineName
+                GoTo Done
+            End If
+        Else
+            ClearTable ReferenceTable
+        End If
     End If
+    
     ' References table has been updated
     ' All tables have been updated
     

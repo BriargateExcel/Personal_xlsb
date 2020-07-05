@@ -1,6 +1,9 @@
 Attribute VB_Name = "CodeImportExportMenus"
 Option Explicit
-
+' Changes:
+' 6/26/2020
+'   Refactored out the BuildButton code
+'
 Private Const Module_Name As String = "CodeIMportExportMenus."
 
 Private MnuEvt      As clsVBECmdHandler
@@ -15,8 +18,8 @@ Private This As CodeType
 
 Public Sub Auto_Open()
 ' https://bettersolutions.com/vba/ribbon/face-ids-2003.htm for FaceIDs
-    
-    Dim NewButton As CommandBarButton
+' 7/1/2020
+'   Added ExposeAllSheets
     
     On Error Resume Next
     CommandBars(CommandBarName).Delete
@@ -28,6 +31,8 @@ Public Sub Auto_Open()
     BuildButton "Export", "Export", 7026
     BuildButton "Import", "Import", 7027
     BuildButton "ExposeAllSheets", "Expose All Sheets", 703
+    BuildButton "TurnOnAutomaticProcessing", "Reset Automatic Processing", 107
+    BuildButton "ExposeAllSheets", "Make all worksheets visible", 161
     
     This.CustomBar.Visible = True
     

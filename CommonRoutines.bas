@@ -71,8 +71,14 @@ Option Explicit
 '   Modified ShowProgress to varying intervals
 ' 6/15/2020
 ' Added EnsurePath
+' 7/1/2020
+'   Modified ShowProgress to display an update every 3 seconds
+'   Added TimeLast, TimeInterval, and Reset
 
 Private Const Module_Name As String = "CommonRoutines."
+
+Private TimeLast As Date
+Private Const TimeInterval As Date = 3 * (1 / 24 / 60 / 60) ' Seconds as a fraction of one day
 
 Public Function CheckStringInRange( _
        ByVal TryString As String, _
@@ -854,39 +860,47 @@ ErrorHandler:
     RaiseError Err.Number, Err.Source, RoutineName, Err.Description
 End Sub ' ResizeTable
 
+Public Sub Reset()
+' 7/1/2020
+'   New
+
+    ' Resets the timer for ShowProgress
+    
+    Const RoutineName As String = Module_Name & "Reset"
+    On Error GoTo ErrorHandler
+    
+    TimeLast = Now
+    
+Done:
+    Exit Sub
+ErrorHandler:
+    ReportError "Exception raised", _
+                "Routine", RoutineName, _
+                "Error Number", Err.Number, _
+                "Error Description", Err.Description
+    RaiseError Err.Number, Err.Source, RoutineName, Err.Description
+End Sub ' Reset
+
 Public Sub ShowProgress( _
     ByVal Msg As String, _
     Optional ByVal Counter As Long = 0, _
     Optional ByVal MaxValue As Long = 0)
+' 7/1/2020
+'   Updated to display every TimeInterval seconds
 
     ' This routine publishes a status message in the statusbar
     
     Const RoutineName As String = Module_Name & "ShowProgress"
     On Error GoTo ErrorHandler
     
-    Dim Delta As Long
-    Delta = MaxValue - Counter
+    Dim DeltaTime As Date
+    DeltaTime = Now - TimeLast
     
-    Dim Intrvl As Long
-    If Delta > 100000 Then
-        Intrvl = 100000
-    ElseIf Delta < 100000 And Delta > 10000 Then
-        Intrvl = 10000
-    ElseIf Delta < 10000 And Delta > 1000 Then
-        Intrvl = 1000
-    ElseIf Delta < 1000 And Delta > 100 Then
-        Intrvl = 100
-    ElseIf Delta < 100 And Delta > 10 Then
-        Intrvl = 10
-    Else
-        Intrvl = 1
-    End If
-    
-    If Intrvl = 0 Then
-        Application.StatusBar = Msg
-    Else
-        If Counter Mod Intrvl = 0 Then
-            DoEvents
+    If DeltaTime > TimeInterval Then
+        TimeLast = Now
+        If Counter = 0 Then
+            Application.StatusBar = Msg
+        Else
             Application.StatusBar = Msg & ":  " & Format$(Counter, "#,##0") & " / " & Format$(MaxValue, "#,##0")
         End If
     End If
@@ -1030,6 +1044,6 @@ Public Sub EnsurePath(ByVal Path As String)
 Done:
     Exit Sub
 ErrorHandler:
-    ' Could neither find nor build path
+    RaiseError Err.Number, Err.Source, RoutineName, Err.Description
 End Sub ' EnsurePath
 
